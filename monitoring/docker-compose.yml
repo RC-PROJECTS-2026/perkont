@@ -1,0 +1,128 @@
+version: '3.9'
+
+# Bölüm 12 — Monitoring Stack: Prometheus + Grafana + ELK Stack
+# Bölüm 13 — Production deployment altyapısı
+
+services:
+
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: perkont-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    networks: [monitoring]
+    ports: ['9090:9090']
+
+  grafana:
+    image: grafana/grafana:10.3.0
+    container_name: perkont-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-ChangeMe123!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks: [monitoring]
+    ports: ['3001:3000']
+    depends_on: [prometheus]
+
+  # ─── ELK STACK (Bölüm 12 — Winston + ELK) ──────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: perkont-elasticsearch
+    restart: unless-stopped
+    environment:
+      - node.name=es01
+      - cluster.name=perkont-logs
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-ChangeMe123!}
+      - xpack.security.http.ssl.enabled=false
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks: [monitoring, perkont-net]
+    ports: ['9200:9200']
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.12.0
+    container_name: perkont-logstash
+    restart: unless-stopped
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-ChangeMe123!}
+    networks: [monitoring, perkont-net]
+    ports: ['5044:5044', '5000:5000']
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.0
+    container_name: perkont-kibana
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD:-ChangeMe123!}
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+    networks: [monitoring]
+    ports: ['5601:5601']
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+
+  # ─── EXPORTERS ──────────────────────────────────────────────────────────────
+  node_exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: perkont-node-exporter
+    restart: unless-stopped
+    pid: host
+    volumes: [/proc:/host/proc:ro, /sys:/host/sys:ro, /:/rootfs:ro]
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks: [monitoring]
+
+  mysqld_exporter:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: perkont-mysqld-exporter
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=${DB_USERNAME}:${DB_PASSWORD}@(mysql-primary:3306)/${DB_DATABASE}
+    networks: [monitoring, perkont-net]
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: perkont-redis-exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    networks: [monitoring, perkont-net]
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  elasticsearch_data:
+  kibana_data:
+
+networks:
+  monitoring: {driver: bridge}
+  perkont-net: {external: true}

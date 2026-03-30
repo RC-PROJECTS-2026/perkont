@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "PerKont",
+    "slug": "perkont-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.perkont.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ekipman QR kodlarını okumak ve denetim fotoğrafları çekmek için kamera erişimi gereklidir.",
+        "NSLocationWhenInUseUsageDescription": "Denetim sırasında konum bilgisi kayıt için konum erişimi gereklidir.",
+        "NSPhotoLibraryUsageDescription": "Denetim fotoğraflarını kaydetmek için fotoğraf kütüphanesi erişimi gereklidir."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.perkont.mobile",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-camera",
+        { "cameraPermission": "Ekipman QR kodlarını okumak için kamera erişimi gereklidir." }
+      ],
+      [
+        "expo-location",
+        { "locationWhenInUsePermission": "Denetim konumu kayıt etmek için konum gereklidir." }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#3366f5"
+        }
+      ],
+      "expo-task-manager",
+      "expo-background-fetch"
+    ],
+    "scheme": "perkont",
+    "extra": {
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
+    }
+  }
+}

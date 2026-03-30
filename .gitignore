@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.next/
+.expo/
+*.log
+.env
+.env.local
+.env.*.local
+coverage/
+.DS_Store
+Thumbs.db
+*.pem
+ssl/
+logs/

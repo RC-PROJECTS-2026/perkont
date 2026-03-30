@@ -1,0 +1,356 @@
+version: '3.9'
+
+# Bölüm 13 — Production Deployment Mimarisi
+# Redis Sentinel Cluster (Primary + 2 Replica)
+# MySQL Primary + Replica + Backup (mysqldump cron)
+# MinIO Cluster, Nginx, API, Frontend
+
+x-api-common: &api-common
+  image: ghcr.io/${GITHUB_REPO}/backend:latest
+  restart: unless-stopped
+  env_file: .env
+  networks: [perkont-net]
+  depends_on:
+    mysql-primary:
+      condition: service_healthy
+    redis-primary:
+      condition: service_healthy
+  volumes:
+    - ./logs:/app/logs
+
+services:
+
+  # ─── API (2 instance — load balanced) ───────────────────────────────────────
+  api-1:
+    <<: *api-common
+    container_name: perkont-api-1
+    environment:
+      - INSTANCE_ID=1
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: '0.5'}
+
+  api-2:
+    <<: *api-common
+    container_name: perkont-api-2
+    environment:
+      - INSTANCE_ID=2
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: '0.5'}
+
+  # ─── FRONTEND ────────────────────────────────────────────────────────────────
+  frontend:
+    image: ghcr.io/${GITHUB_REPO}/frontend:latest
+    container_name: perkont-frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+    networks: [perkont-net]
+    deploy:
+      resources:
+        limits: {memory: 256M, cpus: '0.25'}
+
+  # ─── MYSQL (Primary + Replica) ────────────────────────────────────────────
+  # Bölüm 13: MySQL Primary + Replica, mysqldump backup: daily full, binlog replication
+  mysql-primary:
+    image: mysql:8.0
+    container_name: perkont-mysql-primary
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_change_me}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE}
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --log-slave-updates=ON
+      - --binlog-expire-logs-seconds=604800
+      - --max-binlog-size=256M
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --bind-address=0.0.0.0
+      - --log-error-verbosity=3
+    volumes:
+      - mysql_primary_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-p${DB_ROOT_PASSWORD:-root_change_me}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [perkont-net]
+    deploy:
+      resources:
+        limits: {memory: 1G, cpus: '1.0'}
+
+  mysql-replica:
+    image: mysql:8.0
+    container_name: perkont-mysql-replica
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_change_me}
+    command:
+      - --server-id=2
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --log-slave-updates=ON
+      - --read-only=ON
+      - --super-read-only=ON
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --skip-slave-start
+    volumes:
+      - mysql_replica_data:/var/lib/mysql
+      - ./mysql/init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh:ro
+    depends_on:
+      mysql-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-p${DB_ROOT_PASSWORD:-root_change_me}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [perkont-net]
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: '0.5'}
+
+  # MySQL Backup — Günlük full dump + binlog
+  # Bölüm 13: mysqlbackup: daily full → şifreli S3, 90 gün saklama
+  mysql-backup:
+    image: mysql:8.0
+    container_name: perkont-mysql-backup
+    restart: unless-stopped
+    entrypoint: >
+      bash -c "
+        apt-get update && apt-get install -y cron awscli && rm -rf /var/lib/apt/lists/* &&
+        mkdir -p /backups &&
+        echo '0 2 * * * /usr/local/bin/backup.sh >> /var/log/mysql-backup.log 2>&1' > /etc/cron.d/mysql-backup &&
+        chmod 0644 /etc/cron.d/mysql-backup &&
+        crontab /etc/cron.d/mysql-backup &&
+        cat > /usr/local/bin/backup.sh << 'SCRIPT'
+      #!/bin/bash
+      set -e
+      TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
+      BACKUP_FILE=/backups/$${MYSQL_DATABASE}_$${TIMESTAMP}.sql.gz
+
+      echo \"[$$TIMESTAMP] Starting MySQL backup...\"
+      mysqldump -h mysql-primary -u root -p$${MYSQL_ROOT_PASSWORD} \
+        --single-transaction --routines --triggers --events \
+        --all-databases | gzip > $$BACKUP_FILE
+
+      echo \"Backup completed: $$BACKUP_FILE\"
+
+      # S3'e yükle (MinIO veya harici S3)
+      if [ -n \"$$S3_BUCKET\" ]; then
+        aws --endpoint-url $$S3_ENDPOINT s3 cp $$BACKUP_FILE s3://$$S3_BUCKET/mysql/$$TIMESTAMP.sql.gz
+        echo \"Uploaded to S3: $$S3_BUCKET\"
+      fi
+
+      # Eski yedekleri temizle (7 günden eski)
+      find /backups -name '*.sql.gz' -mtime +7 -delete
+      echo \"[$$TIMESTAMP] Backup process finished.\"
+      SCRIPT
+        chmod +x /usr/local/bin/backup.sh &&
+        touch /var/log/mysql-backup.log &&
+        cron && tail -f /var/log/mysql-backup.log
+      "
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_change_me}
+      MYSQL_DATABASE: ${DB_DATABASE}
+      S3_BUCKET: ${BACKUP_S3_BUCKET:-perkont-backups}
+      S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-http://minio:9000}
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      AWS_DEFAULT_REGION: ${BACKUP_S3_REGION:-us-east-1}
+    volumes:
+      - mysql_backup_data:/backups
+    depends_on:
+      mysql-primary:
+        condition: service_healthy
+    networks: [perkont-net]
+
+  # ─── REDIS SENTINEL CLUSTER ──────────────────────────────────────────────────
+  # Bölüm 13: Redis Sentinel Cluster (Primary + 2 Replica)
+  redis-primary:
+    image: redis:7-alpine
+    container_name: perkont-redis-primary
+    restart: unless-stopped
+    command: >
+      redis-server
+        --requirepass ${REDIS_PASSWORD}
+        --maxmemory 512mb
+        --maxmemory-policy allkeys-lru
+        --appendonly yes
+        --appendfsync everysec
+        --save 900 1
+        --save 300 10
+        --save 60 10000
+    volumes:
+      - redis_primary_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [perkont-net]
+    deploy:
+      resources:
+        limits: {memory: 768M, cpus: '0.5'}
+
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: perkont-redis-replica-1
+    restart: unless-stopped
+    command: >
+      redis-server
+        --requirepass ${REDIS_PASSWORD}
+        --replicaof redis-primary 6379
+        --masterauth ${REDIS_PASSWORD}
+        --maxmemory 512mb
+        --maxmemory-policy allkeys-lru
+        --appendonly yes
+        --appendfsync everysec
+    volumes:
+      - redis_replica1_data:/data
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    networks: [perkont-net]
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: '0.25'}
+
+  redis-replica-2:
+    image: redis:7-alpine
+    container_name: perkont-redis-replica-2
+    restart: unless-stopped
+    command: >
+      redis-server
+        --requirepass ${REDIS_PASSWORD}
+        --replicaof redis-primary 6379
+        --masterauth ${REDIS_PASSWORD}
+        --maxmemory 512mb
+        --maxmemory-policy allkeys-lru
+        --appendonly yes
+        --appendfsync everysec
+    volumes:
+      - redis_replica2_data:/data
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    networks: [perkont-net]
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: '0.25'}
+
+  # Redis Sentinel — failover yönetimi
+  redis-sentinel-1:
+    image: redis:7-alpine
+    container_name: perkont-redis-sentinel-1
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'sentinel monitor perkont-master redis-primary 6379 2' > /tmp/sentinel.conf &&
+        echo 'sentinel auth-pass perkont-master ${REDIS_PASSWORD}' >> /tmp/sentinel.conf &&
+        echo 'sentinel down-after-milliseconds perkont-master 5000' >> /tmp/sentinel.conf &&
+        echo 'sentinel failover-timeout perkont-master 60000' >> /tmp/sentinel.conf &&
+        echo 'sentinel parallel-syncs perkont-master 1' >> /tmp/sentinel.conf &&
+        redis-sentinel /tmp/sentinel.conf
+      "
+    depends_on: [redis-primary, redis-replica-1, redis-replica-2]
+    networks: [perkont-net]
+
+  redis-sentinel-2:
+    image: redis:7-alpine
+    container_name: perkont-redis-sentinel-2
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'sentinel monitor perkont-master redis-primary 6379 2' > /tmp/sentinel.conf &&
+        echo 'sentinel auth-pass perkont-master ${REDIS_PASSWORD}' >> /tmp/sentinel.conf &&
+        echo 'sentinel down-after-milliseconds perkont-master 5000' >> /tmp/sentinel.conf &&
+        echo 'sentinel failover-timeout perkont-master 60000' >> /tmp/sentinel.conf &&
+        echo 'sentinel parallel-syncs perkont-master 1' >> /tmp/sentinel.conf &&
+        redis-sentinel /tmp/sentinel.conf
+      "
+    depends_on: [redis-primary, redis-replica-1, redis-replica-2]
+    networks: [perkont-net]
+
+  redis-sentinel-3:
+    image: redis:7-alpine
+    container_name: perkont-redis-sentinel-3
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'sentinel monitor perkont-master redis-primary 6379 2' > /tmp/sentinel.conf &&
+        echo 'sentinel auth-pass perkont-master ${REDIS_PASSWORD}' >> /tmp/sentinel.conf &&
+        echo 'sentinel down-after-milliseconds perkont-master 5000' >> /tmp/sentinel.conf &&
+        echo 'sentinel failover-timeout perkont-master 60000' >> /tmp/sentinel.conf &&
+        echo 'sentinel parallel-syncs perkont-master 1' >> /tmp/sentinel.conf &&
+        redis-sentinel /tmp/sentinel.conf
+      "
+    depends_on: [redis-primary, redis-replica-1, redis-replica-2]
+    networks: [perkont-net]
+
+  # ─── MINIO ──────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: perkont-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    networks: [perkont-net]
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: '0.5'}
+
+  # ─── NGINX ──────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: perkont-nginx
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx
+    depends_on: [api-1, api-2, frontend]
+    networks: [perkont-net]
+
+volumes:
+  mysql_primary_data:   {driver: local}
+  mysql_replica_data:   {driver: local}
+  mysql_backup_data:    {driver: local}
+  redis_primary_data:   {driver: local}
+  redis_replica1_data:  {driver: local}
+  redis_replica2_data:  {driver: local}
+  minio_data:           {driver: local}
+  nginx_cache:          {driver: local}
+
+networks:
+  perkont-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
