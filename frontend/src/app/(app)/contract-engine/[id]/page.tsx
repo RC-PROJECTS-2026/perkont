@@ -133,6 +133,7 @@ export default function ContractEngineDetailPage() {
 
   const detailTabs = [
     { key: 'general', label: 'Genel Bilgiler' },
+    { key: 'preview', label: 'Belge Önizleme' },
     { key: 'files', label: 'Dosyalar' },
     { key: 'status-log', label: 'Durum Geçmişi' },
   ];
@@ -450,6 +451,88 @@ export default function ContractEngineDetailPage() {
             )}
           </div>
         </div>
+      )}
+
+      {activeTab === 'preview' && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <CardTitle>Sözleşme Belgesi</CardTitle>
+            <div className="flex gap-2">
+              {c?.pdfUrl && (
+                <Button
+                  variant="outline" size="sm"
+                  icon={<Download className="w-4 h-4" />}
+                  onClick={async () => {
+                    try {
+                      const res = await contractEngineApi.getDocument(id);
+                      const blob = new Blob([res as any], { type: 'application/octet-stream' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a'); a.href = url;
+                      a.download = c.pdfUrl?.includes('.docx') ? `sozlesme-${c.contractNumber}.docx` : `sozlesme-${c.contractNumber}.pdf`;
+                      a.click(); URL.revokeObjectURL(url);
+                    } catch { toast.error('Indirme hatasi'); }
+                  }}
+                >
+                  Belgeyi İndir
+                </Button>
+              )}
+              <Button size="sm" icon={<Upload className="w-4 h-4" />} onClick={() => setShowUpload(true)}>
+                Belge Yükle
+              </Button>
+            </div>
+          </div>
+
+          {c?.pdfUrl ? (
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <Badge color={c.pdfUrl.includes('.docx') ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}>
+                  {c.pdfUrl.includes('.docx') ? 'Word (.docx)' : 'PDF'}
+                </Badge>
+                <span className="text-xs text-slate-400">{c.pdfUrl.replace('local://', '')}</span>
+              </div>
+
+              {c.pdfUrl.includes('.pdf') ? (
+                <iframe
+                  src={`${process.env.NEXT_PUBLIC_API_URL}/contract-engine/${id}/document`}
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700"
+                  style={{ height: '80vh' }}
+                  title="Sözleşme Önizleme"
+                />
+              ) : (
+                <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-12 text-center">
+                  <FileText className="w-16 h-16 text-blue-400 mx-auto mb-4" />
+                  <p className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                    Word Belgesi Yüklendi
+                  </p>
+                  <p className="text-sm text-slate-500 mb-4">
+                    {c.contractNumber} - {c.title || 'Sözleşme'}
+                  </p>
+                  <Button
+                    icon={<Download className="w-4 h-4" />}
+                    onClick={async () => {
+                      try {
+                        const res = await contractEngineApi.getDocument(id);
+                        const blob = new Blob([res as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a'); a.href = url;
+                        a.download = `sozlesme-${c.contractNumber}.docx`;
+                        a.click(); URL.revokeObjectURL(url);
+                      } catch { toast.error('Indirme hatasi'); }
+                    }}
+                  >
+                    Word Belgesini İndir
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<FileText className="w-12 h-12" />}
+              title="Belge yüklenmemiş"
+              description="Sözleşme belgesini Word veya PDF olarak yükleyebilirsiniz"
+            />
+          )}
+        </Card>
       )}
 
       {activeTab === 'files' && (

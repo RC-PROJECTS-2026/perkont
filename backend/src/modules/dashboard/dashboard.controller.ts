@@ -7,13 +7,14 @@ import { RolesGuard } from '@/common/guards/roles.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { UserRole } from '@/common/enums/user-role.enum';
 import { DashboardService } from './dashboard.service';
+import { ExecutiveBiService } from './executive-bi.service';
 
 @ApiTags('dashboard')
 @ApiBearerAuth('JWT')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Controller('dashboard')
 export class DashboardController {
-  constructor(private service: DashboardService) {}
+  constructor(private service: DashboardService, private biService: ExecutiveBiService) {}
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.EXECUTIVE)
@@ -62,6 +63,13 @@ export class DashboardController {
   @ApiOperation({ summary: 'Aylık denetim istatistikleri' })
   getMonthlyStats(@Query('months') months?: number) {
     return this.service.getMonthlyInspectionStats(months || 12);
+  }
+
+  @Get('executive-bi')
+  @Roles(UserRole.ADMIN, UserRole.EXECUTIVE)
+  @ApiOperation({ summary: 'Executive BI: ciro, pipeline, verimlilik, musteri analizi' })
+  getExecutiveBi(@Req() req: any) {
+    return this.biService.getExecutiveDashboard(req.companyId);
   }
 }
 

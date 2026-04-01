@@ -3,6 +3,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  StreamableFile,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -23,12 +24,18 @@ export class TransformInterceptor<T>
     next: CallHandler,
   ): Observable<ApiResponse<T>> {
     return next.handle().pipe(
-      map((data) => ({
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: context.switchToHttp().getRequest().url,
-      })),
+      map((data) => {
+        // StreamableFile (PDF, dosya indirme) ise sarmala
+        if (data instanceof StreamableFile) {
+          return data as any;
+        }
+        return {
+          success: true,
+          data,
+          timestamp: new Date().toISOString(),
+          path: context.switchToHttp().getRequest().url,
+        };
+      }),
     );
   }
 }

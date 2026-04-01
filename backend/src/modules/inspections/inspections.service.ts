@@ -104,6 +104,24 @@ export class InspectionsService {
     const equipment = await this.equipmentService.findOne(dto.equipmentId);
     const formTemplate = await this.formTemplatesService.findOne(dto.formTemplateId);
 
+    // Personel yetkilendirme kontrolu: bu denetci bu ekipman tipinde yetkili mi?
+    try {
+      const authRows = await this.inspectionRepo.manager.query(
+        `SELECT COUNT(*) as c FROM personnel_authorizations
+         WHERE userId = ? AND equipmentTypeId = ? AND isActive = 1
+         AND (expiresAt IS NULL OR expiresAt >= CURDATE())`,
+        [inspectorId, equipment.equipmentTypeId],
+      );
+      if (Number(authRows[0]?.c) === 0) {
+        throw new BadRequestException(
+          'Bu ekipman tipinde denetim yapma yetkiniz bulunmamaktadır. Teknik yöneticinizle iletişime geçin.',
+        );
+      }
+    } catch (e) {
+      if (e instanceof BadRequestException) throw e;
+      // personnel_authorizations tablosu yoksa atla (geriye uyumluluk)
+    }
+
     // Aynı ekipman için açık denetim var mı?
     const openInspection = await this.inspectionRepo.findOne({
       where: {
@@ -472,8 +490,15 @@ export class InspectionsService {
           await reportsService.createFromInspection(inspectionId, reviewerId);
         }
       } catch (e) {
-        // Rapor oluşturma hatası denetim onayını engellememeli
-        // Log the error but don't throw
+        // Rapor oluşturma hatası denetim onayını engellememeli — ama kayıt altına al
+        await this.auditService.log({
+          userId: reviewerId,
+          action: 'REPORT_AUTO_CREATION_FAILED',
+          entityType: 'Inspection',
+          entityId: inspectionId,
+          newValues: { error: (e as any)?.message?.slice(0, 500) },
+          description: `Denetim ${inspectionId} onaylandı ancak rapor otomatik oluşturulamadı. Manuel rapor oluşturma gerekli.`,
+        });
       }
     }
 

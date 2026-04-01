@@ -12,6 +12,7 @@ import { LogoApiClient } from './logo-api.client';
 import { CustomersService } from '@/modules/customers/customers.service';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import { AuditService } from '@/modules/audit/audit.service';
+import { DataSource } from 'typeorm';
 import { NotificationType, NotificationChannel } from '@/modules/notifications/entities/notification.entity';
 import { PaginationDto, PaginatedResult } from '@/common/dto/pagination.dto';
 
@@ -26,6 +27,7 @@ export class LogoService {
     private customersService: CustomersService,
     private notificationsService: NotificationsService,
     private auditService: AuditService,
+    private dataSource: DataSource,
     @Inject(WINSTON_MODULE_PROVIDER) private logger: Logger,
   ) {}
 
@@ -170,6 +172,25 @@ export class LogoService {
         logoEntityRef,
         lastError: null,
       });
+
+      // Invoice sync basarili → WO status'unu INVOICED yap
+      if (item.entityType === LogoEntityType.INVOICE && item.entityId) {
+        try {
+          await this.dataSource.query(
+            `UPDATE work_orders SET status = 'invoiced' WHERE id = ? AND status = 'report_approved'`,
+            [item.entityId],
+          );
+          await this.auditService.log({
+            action: 'WORK_ORDER_INVOICED',
+            entityType: 'WorkOrder',
+            entityId: item.entityId,
+            newValues: { status: 'invoiced', logoEntityRef },
+            description: `İş emri faturalandı — Logo fatura no: ${logoEntityRef}`,
+          });
+        } catch (e) {
+          this.logger.warn(`WO INVOICED güncelleme başarısız: ${(e as any).message}`, 'LogoService');
+        }
+      }
 
       await this.auditService.log({
         action: 'LOGO_SYNC_SUCCESS',

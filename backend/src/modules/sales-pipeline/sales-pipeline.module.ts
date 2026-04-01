@@ -406,6 +406,15 @@ export class SalesPipelineService {
       `);
 
       for (const row of results) {
+        // Idempotency: ayni gun + ayni musteri icin tekrar oluşturma
+        const todayDup = await this.opportunityRepo
+          .createQueryBuilder('o')
+          .where('o.customerId = :cid', { cid: row.customerId })
+          .andWhere("o.source = 'existing_customer'")
+          .andWhere('DATE(o.createdAt) = CURDATE()')
+          .getCount();
+        if (todayDup > 0) continue;
+
         await this.opportunityRepo.save(this.opportunityRepo.create({
           customerId: row.customerId,
           title: `${row.customerName} — Periyodik Kontrol Yenileme (${row.equipmentCount} ekipman)`,

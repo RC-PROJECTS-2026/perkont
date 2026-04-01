@@ -445,7 +445,12 @@ export const contractEngineApi = {
   createFromProposal: (proposalId: string, data: any) => apiClient.post(`/contract-engine/from-proposal/${proposalId}`, data),
   update: (id: string, data: any) => apiClient.put(`/contract-engine/${id}`, data),
   getPdf: (id: string) => apiClient.get(`/contract-engine/${id}/pdf`, { responseType: 'blob' }),
+  getDocument: (id: string) => apiClient.get(`/contract-engine/${id}/document`, { responseType: 'blob' }),
   send: (id: string) => apiClient.patch(`/contract-engine/${id}/send`),
+  uploadDocument: (id: string, file: File) => {
+    const fd = new FormData(); fd.append('file', file);
+    return apiClient.post(`/contract-engine/${id}/upload`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
   uploadSigned: (id: string, file: File) => {
     const fd = new FormData(); fd.append('file', file);
     return apiClient.post(`/contract-engine/${id}/upload-signed`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });

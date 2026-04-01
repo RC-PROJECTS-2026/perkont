@@ -826,8 +826,15 @@ export class ProposalsService {
         );
       }
     } catch (e) {
-      // Don't block proposal acceptance if contract auto-creation fails
-      console.warn('Auto-contract creation failed:', e?.message);
+      // Log failure explicitly — don't block acceptance but make it visible
+      await this.auditService.log({
+        userId,
+        action: 'CONTRACT_AUTO_CREATION_FAILED',
+        entityType: 'proposal',
+        entityId: id,
+        newValues: { error: (e as any)?.message?.slice(0, 500), proposalNumber: proposal.proposalNumber },
+        description: `Teklif ${proposal.proposalNumber} kabul edildi ancak sözleşme otomatik oluşturulamadı. Manuel müdahale gerekli.`,
+      });
     }
 
     // Update opportunity — link proposal + auto-created contract

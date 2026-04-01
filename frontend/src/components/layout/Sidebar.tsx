@@ -147,13 +147,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   return (
     <aside className={cn(
       'fixed left-0 top-0 bottom-0 z-30 flex flex-col',
-      'bg-navy-900 border-r border-white/[0.06]',
+      'border-r border-white/[0.04]',
       'transition-all duration-300',
       collapsed ? 'w-16' : 'w-[260px]',
-    )}>
+    )} style={{ background: 'linear-gradient(180deg, #0c1526 0%, #0a1120 100%)' }}>
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 h-14 border-b border-white/[0.06] flex-shrink-0">
-        <div className="w-8 h-8 rounded-[10px] bg-cyan-500 flex items-center justify-center flex-shrink-0 shadow-glow">
+      <div className="flex items-center gap-3 px-5 h-14 border-b border-white/[0.04] flex-shrink-0">
+        <div className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d9488, #06b6d4)', boxShadow: '0 0 14px rgba(6,182,212,0.2)' }}>
           <Zap className="w-4 h-4 text-white" />
         </div>
         {!collapsed && <span className="font-display font-bold text-white/90 text-lg tracking-tight">PerKont</span>}
@@ -231,7 +231,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </nav>
 
       {/* User */}
-      <div className="p-3 border-t border-white/[0.06]">
+      <div className="p-3 border-t border-white/[0.04]">
         <div className={cn('flex items-center gap-3', collapsed && 'justify-center')}>
           <div className="w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center flex-shrink-0">
             <span className="text-cyan-400 text-xs font-bold">{user?.fullName?.charAt(0).toUpperCase()}</span>
@@ -243,7 +243,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             </div>
           )}
           {!collapsed && (
-            <button onClick={logout} className="p-1.5 rounded-lg hover:bg-white/[0.05] text-white/25 hover:text-white/50 transition-colors duration-150">
+            <button onClick={() => { logout(); window.location.href = '/login'; }} className="p-1.5 rounded-lg hover:bg-white/[0.05] text-white/25 hover:text-white/50 transition-colors duration-150">
               <LogOut className="w-4 h-4" />
             </button>
           )}

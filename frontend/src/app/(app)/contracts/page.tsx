@@ -155,7 +155,9 @@ export default function ContractsPage() {
                     </td>
                     <td>
                       {c.documentUrl ? (
-                        <Badge color="bg-green-100 text-green-700">Yüklendi</Badge>
+                        <Badge color="bg-green-100 text-green-700">
+                          {c.documentUrl.endsWith('.docx') || c.documentUrl.includes('.docx') ? 'Word' : 'PDF'}
+                        </Badge>
                       ) : (
                         <Badge color="bg-slate-100 text-slate-400">Yok</Badge>
                       )}
@@ -220,9 +222,9 @@ export default function ContractsPage() {
           <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
           {selectedFile
             ? <p className="text-sm font-semibold text-teal-600">{selectedFile.name}</p>
-            : <p className="text-sm text-slate-500">PDF belgeyi seçin</p>
+            : <p className="text-sm text-slate-500">PDF veya Word belgesi seçin (.pdf, .docx)</p>
           }
-          <input id="contract-upload" type="file" accept=".pdf" className="hidden"
+          <input id="contract-upload" type="file" accept=".pdf,.docx,.doc" className="hidden"
             onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />
         </div>
       </Modal>

@@ -10,6 +10,7 @@ export enum WorkOrderStatus {
   PLANNED = 'planned',
   ASSIGNED = 'assigned',
   IN_PROGRESS = 'in_progress',
+  POSTPONED = 'postponed',
   COMPLETED = 'completed',
   REPORT_PENDING = 'report_pending',
   REPORT_APPROVED = 'report_approved',

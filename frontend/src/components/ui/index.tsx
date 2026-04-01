@@ -43,8 +43,8 @@ export function Badge({ children, color, dot, className }: BadgeProps) {
 }
 
 // ─── Card ────────────────────────────────────────────────────────────────────
-interface CardProps { children: React.ReactNode; className?: string; hover?: boolean; padding?: 'none' | 'sm' | 'md' | 'lg'; }
-export function Card({ children, className, hover, padding = 'md' }: CardProps) {
+interface CardProps { children: React.ReactNode; className?: string; hover?: boolean; padding?: 'none' | 'sm' | 'md' | 'lg'; id?: string; }
+export function Card({ children, className, hover, padding = 'md', id }: CardProps) {
   const paddings = { none: '', sm: 'p-4', md: 'p-5', lg: 'p-6' };
   return (
     <div className={cn(
@@ -52,7 +52,7 @@ export function Card({ children, className, hover, padding = 'md' }: CardProps) 
       hover && 'card-hover',
       paddings[padding],
       className,
-    )}>
+    )} id={id}>
       {children}
     </div>
   );
@@ -225,13 +225,13 @@ export function EmptyState({ icon, title, description, action }: {
 }
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
-export function StatCard({ label, value, change, icon, color, loading, title }: {
+export function StatCard({ label, value, change, icon, color, loading, title, className }: {
   label?: string; title?: string; value: number | string; change?: { value: number; label: string };
-  icon: React.ReactNode; color?: string; loading?: boolean;
+  icon: React.ReactNode; color?: string; loading?: boolean; className?: string;
 }) {
   const displayLabel = label || title || '';
   return (
-    <div className="stat-card group">
+    <div className={cn("stat-card group", className)}>
       <div className="flex items-start justify-between mb-3">
         <div className={cn('p-2.5 rounded-xl transition-colors duration-200', color || 'bg-cyan-500/10')}>{icon}</div>
         {change && (
@@ -265,14 +265,14 @@ export function ConfirmModal({ open, onClose, onConfirm, title, message, confirm
 }
 
 // ─── Page Header ─────────────────────────────────────────────────────────────
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode; }) {
+export function PageHeader({ title, subtitle, actions, children }: { title: string; subtitle?: string; actions?: React.ReactNode; children?: React.ReactNode; }) {
   return (
     <div className="page-header">
       <div>
         <h1 className="font-bold text-xl text-foreground tracking-tight">{title}</h1>
         {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {(actions || children) && <div className="flex items-center gap-2">{actions || children}</div>}
     </div>
   );
 }

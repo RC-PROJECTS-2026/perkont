@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, FindOptionsWhere } from 'typeorm';
@@ -151,6 +152,25 @@ export class CustomersService {
 
   async deactivate(id: string, userId: string): Promise<void> {
     const customer = await this.findOne(id);
+
+    // Cascading kontrol: acik sozlesme, WO veya denetim varsa engelle
+    const blocks = await this.customerRepo.manager.query(`
+      SELECT
+        (SELECT COUNT(*) FROM contract_documents WHERE customerId = ? AND status IN ('active','signed')) as activeContracts,
+        (SELECT COUNT(*) FROM work_orders WHERE customerId = ? AND status NOT IN ('cancelled','invoiced')) as openWorkOrders,
+        (SELECT COUNT(*) FROM inspections i JOIN equipment e ON e.id = i.equipmentId WHERE e.customerId = ? AND i.status IN ('in_progress','submitted','under_review')) as openInspections
+    `, [id, id, id]);
+
+    const b = blocks[0];
+    const issues: string[] = [];
+    if (Number(b.activeContracts) > 0) issues.push(`${b.activeContracts} aktif sözleşme`);
+    if (Number(b.openWorkOrders) > 0) issues.push(`${b.openWorkOrders} açık iş emri`);
+    if (Number(b.openInspections) > 0) issues.push(`${b.openInspections} devam eden denetim`);
+
+    if (issues.length > 0) {
+      throw new BadRequestException(`Müşteri pasife alınamaz: ${issues.join(', ')} mevcut. Önce bunları kapatın.`);
+    }
+
     await this.customerRepo.update(id, { isActive: false });
     await this.auditService.log({
       userId,

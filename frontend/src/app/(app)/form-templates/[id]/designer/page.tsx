@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { formTemplatesApi, useMutationWithToast } from '@/lib/api';
@@ -112,6 +112,7 @@ export default function FormDesignerPage() {
   const [templateName, setTemplateName]   = useState('');
   const [hasChanges, setHasChanges]       = useState(false);
   const [previewMode, setPreviewMode]     = useState(false);
+  const [viewMode, setViewMode]           = useState<'designer' | 'document'>('document');
   const [showAddModal, setShowAddModal]   = useState(false);
 
   // Yeni alan modal state
@@ -124,16 +125,21 @@ export default function FormDesignerPage() {
     queryKey: ['form-template-designer', id],
     queryFn: () => formTemplatesApi.get(id),
     enabled: !!id,
-    onSuccess: (res: any) => {
-      const tmpl = res?.data;
-      if (tmpl) {
-        setTemplateName(tmpl.name);
-        setFields(tmpl.fields || []);
-      }
-    },
-  } as any);
+  });
 
   const template = (data as any)?.data;
+
+  useEffect(() => {
+    if (template) {
+      setTemplateName(template.name || '');
+      if (template.fields?.length && fields.length === 0) {
+        setFields(template.fields.map((f: any) => ({
+          ...f,
+          fieldType: f.fieldType?.toLowerCase() || 'text',
+        })));
+      }
+    }
+  }, [template]);
 
   /* Kaydetme */
   const saveMutation = useMutationWithToast(
@@ -344,6 +350,21 @@ export default function FormDesignerPage() {
         </div>
         <div className="flex items-center gap-3">
           {hasChanges && <Badge color="bg-amber-100 text-amber-700">Kaydedilmemiş</Badge>}
+          {/* Görünüm Toggle */}
+          <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <button
+              onClick={() => setViewMode('document')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === 'document' ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Doküman
+            </button>
+            <button
+              onClick={() => setViewMode('designer')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === 'designer' ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Tasarımcı
+            </button>
+          </div>
           <Button variant="outline" icon={<Plus className="w-4 h-4" />} onClick={() => setShowAddModal(true)}>
             Alan Ekle
           </Button>
@@ -361,6 +382,212 @@ export default function FormDesignerPage() {
         </div>
       </div>
 
+      {/* ═══ DOKÜMAN GÖRÜNÜMÜ ═══ */}
+      {viewMode === 'document' && (
+        <div className="flex gap-6 h-[calc(100vh-200px)]">
+          {/* Doküman */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-w-4xl mx-auto" style={{ fontFamily: 'Arial, sans-serif' }}>
+              {/* Rapor Başlığı */}
+              <div className="border-b-2 border-blue-800 p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-16 h-16 border border-slate-300 rounded flex items-center justify-center text-[8px] text-slate-400 text-center leading-tight">
+                      ROYALCERT<br/>LOGO
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 font-bold">BELGELENDİRME VE GÖZETİM HİZMETLERİ</p>
+                    </div>
+                  </div>
+                  <div className="text-center flex-1 px-4">
+                    <h1 className="text-base font-bold text-blue-900 dark:text-blue-300 uppercase leading-tight">
+                      {templateName}
+                    </h1>
+                  </div>
+                  <div className="w-16 h-16 border border-slate-300 rounded flex items-center justify-center text-[8px] text-slate-400 text-center leading-tight">
+                    TÜRKAK<br/>LOGO
+                  </div>
+                </div>
+                <p className="text-center text-[9px] text-slate-400 mt-2 tracking-widest">ROYALCERT BELGELENDİRME VE GÖZETİM HİZMETLERİ A.Ş.</p>
+              </div>
+
+              {/* Alanları bölümlere göre render et */}
+              <div className="p-4">
+                {fields.map((field, idx) => {
+                  if (field.fieldType === 'section_header') {
+                    // Bölüm başlığı - mavi arka plan
+                    return (
+                      <div
+                        key={field.id}
+                        onClick={() => setSelected(field.id)}
+                        className={`mt-4 mb-1 px-3 py-2 font-bold text-xs uppercase tracking-wide cursor-pointer transition-all border-2 ${
+                          selected === field.id
+                            ? 'border-teal-400 bg-blue-700 text-white'
+                            : 'border-transparent bg-blue-800 text-white hover:border-blue-400'
+                        }`}
+                      >
+                        {field.label}
+                      </div>
+                    );
+                  }
+
+                  // Normal alan - tablo satırı olarak
+                  const nextField = fields[idx + 1];
+                  const isLastInPair = idx % 2 === 1 || !nextField || nextField.fieldType === 'section_header';
+                  const isPairStart = idx % 2 === 0 && nextField && nextField.fieldType !== 'section_header';
+
+                  // Eğer önceki alan pair start ise bunu atla (pair'in içinde render edildi)
+                  const prevField = idx > 0 ? fields[idx - 1] : null;
+                  if (prevField && prevField.fieldType !== 'section_header' && idx % 2 === 1) {
+                    return null; // Pair'in ikinci elemanı - öncekiyle birlikte render edildi
+                  }
+
+                  return (
+                    <div key={field.id} className="flex border border-slate-200 dark:border-slate-700 -mt-px">
+                      {/* Sol alan */}
+                      <div
+                        onClick={() => setSelected(field.id)}
+                        className={`flex-1 flex border-r border-slate-200 dark:border-slate-700 cursor-pointer transition-all ${
+                          selected === field.id ? 'ring-2 ring-teal-400 ring-inset bg-teal-50/50 dark:bg-teal-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <div className="w-2/5 px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700">
+                          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">{field.label}</span>
+                          {field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+                        </div>
+                        <div className="w-3/5 px-3 py-2">
+                          {field.fieldType === 'date' && (
+                            <span className="text-[11px] text-slate-400 italic">__ / __ / ____</span>
+                          )}
+                          {(field.fieldType === 'text' || field.fieldType === 'textarea') && (
+                            <span className="text-[11px] text-slate-400 italic">{field.placeholder || '.............................'}</span>
+                          )}
+                          {field.fieldType === 'number' && (
+                            <span className="text-[11px] text-slate-400 italic">{field.unit ? `_____ ${field.unit}` : '_____'}</span>
+                          )}
+                          {field.fieldType === 'boolean' && (
+                            <span className="text-[11px] text-slate-500">☐ Var &nbsp; ☐ Yok</span>
+                          )}
+                          {field.fieldType === 'select' && (
+                            <span className="text-[11px] text-slate-400 italic">▼ Seçiniz</span>
+                          )}
+                          {(field.fieldType === 'check_item' || field.fieldType === 'check_matrix') && (
+                            <span className="text-[11px] text-slate-500">☐ Uygun &nbsp; ☐ Uygunsuz &nbsp; ☐ N/A</span>
+                          )}
+                          {field.fieldType === 'photo' && (
+                            <span className="text-[11px] text-slate-400 italic">📷 Fotoğraf</span>
+                          )}
+                          {field.fieldType === 'signature' && (
+                            <span className="text-[11px] text-slate-400 italic">✍ İmza</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Sağ alan (varsa eşleşen) */}
+                      {isPairStart && nextField ? (
+                        <div
+                          onClick={() => setSelected(nextField.id)}
+                          className={`flex-1 flex cursor-pointer transition-all ${
+                            selected === nextField.id ? 'ring-2 ring-teal-400 ring-inset bg-teal-50/50 dark:bg-teal-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }`}
+                        >
+                          <div className="w-2/5 px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700">
+                            <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">{nextField.label}</span>
+                            {nextField.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+                          </div>
+                          <div className="w-3/5 px-3 py-2">
+                            {nextField.fieldType === 'date' && <span className="text-[11px] text-slate-400 italic">__ / __ / ____</span>}
+                            {(nextField.fieldType === 'text' || nextField.fieldType === 'textarea') && <span className="text-[11px] text-slate-400 italic">{nextField.placeholder || '.............................'}</span>}
+                            {nextField.fieldType === 'number' && <span className="text-[11px] text-slate-400 italic">{nextField.unit ? `_____ ${nextField.unit}` : '_____'}</span>}
+                            {nextField.fieldType === 'boolean' && <span className="text-[11px] text-slate-500">☐ Var &nbsp; ☐ Yok</span>}
+                            {nextField.fieldType === 'select' && <span className="text-[11px] text-slate-400 italic">▼ Seçiniz</span>}
+                            {(nextField.fieldType === 'check_item' || nextField.fieldType === 'check_matrix') && <span className="text-[11px] text-slate-500">☐ Uygun &nbsp; ☐ Uygunsuz &nbsp; ☐ N/A</span>}
+                            {nextField.fieldType === 'photo' && <span className="text-[11px] text-slate-400 italic">📷</span>}
+                            {nextField.fieldType === 'signature' && <span className="text-[11px] text-slate-400 italic">✍ İmza</span>}
+                          </div>
+                        </div>
+                      ) : isLastInPair ? (
+                        <div className="flex-1" /> /* Boş sağ hücre */
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Sağ Panel - Alan Düzenleme */}
+          <div className="w-80 flex-shrink-0">
+            <Card className="h-full overflow-y-auto">
+              {selectedField ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <Settings className="w-4 h-4 text-teal-600" />
+                    <span className="font-bold text-sm">Alan Düzenle</span>
+                    <span className="text-xs text-slate-400 ml-auto">{FIELD_TYPE_LABELS[selectedField.fieldType] || selectedField.fieldType}</span>
+                  </div>
+
+                  <FieldInput label="Etiket" value={selectedField.label}
+                    onChange={(v) => updateField(selectedField.id, { label: v, fieldKey: generateFieldKey(v) })} />
+                  <FieldInput label="Alan Anahtarı" value={selectedField.fieldKey} mono
+                    onChange={(v) => updateField(selectedField.id, { fieldKey: v })} />
+
+                  {selectedField.fieldType !== 'section_header' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1">Alan Tipi</label>
+                        <select
+                          value={selectedField.fieldType}
+                          onChange={(e) => updateField(selectedField.id, { fieldType: e.target.value as FieldType })}
+                          className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800"
+                        >
+                          {Object.entries(FIELD_TYPE_LABELS).map(([k, v]) => (
+                            <option key={k} value={k}>{v}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-slate-500">Zorunlu Alan</label>
+                        <button
+                          onClick={() => updateField(selectedField.id, { isRequired: !selectedField.isRequired })}
+                          className={`w-10 h-5 rounded-full transition-colors ${selectedField.isRequired ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                        >
+                          <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${selectedField.isRequired ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                        </button>
+                      </div>
+
+                      <FieldInput label="Birim" value={selectedField.unit || ''}
+                        onChange={(v) => updateField(selectedField.id, { unit: v })} hint="mm, kg, bar, °C vb." />
+                      <FieldInput label="Varsayılan Değer" value={selectedField.defaultValue || ''}
+                        onChange={(v) => updateField(selectedField.id, { defaultValue: v })} />
+                      <FieldInput label="Placeholder" value={selectedField.placeholder || ''}
+                        onChange={(v) => updateField(selectedField.id, { placeholder: v })} />
+                    </>
+                  )}
+
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <Button variant="outline" size="sm" className="w-full text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+                      icon={<Trash2 className="w-3.5 h-3.5" />}
+                      onClick={() => { removeField(selectedField.id); setSelected(null); }}>
+                      Alanı Sil
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <Settings className="w-10 h-10 mb-3 opacity-30" />
+                  <p className="text-sm">Düzenlemek için bir alan seçin</p>
+                  <p className="text-xs mt-1 text-slate-500">Doküman üzerinde bir alana tıklayın</p>
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TASARIMCI GÖRÜNÜMÜ ═══ */}
+      {viewMode === 'designer' && (
       <div className="flex gap-6 h-[calc(100vh-200px)]">
         {/* ─── Sol Panel: Alan Paleti ─────────────────────────────────────── */}
         <div className="w-52 flex-shrink-0">
@@ -753,6 +980,7 @@ export default function FormDesignerPage() {
           </Card>
         </div>
       </div>
+      )}
 
       {/* ─── Alan Ekleme Modalı ───────────────────────────────────────────── */}
       <Modal

@@ -8,6 +8,7 @@ import { LogoApiClient } from '../logo-api.client';
 import { CustomersService } from '@/modules/customers/customers.service';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import { AuditService } from '@/modules/audit/audit.service';
+import { DataSource } from 'typeorm';
 
 const mockQueueItem = (overrides = {}): Partial<LogoSyncQueue> => ({
   id: 'queue-uuid-001',
@@ -80,6 +81,7 @@ describe('LogoService', () => {
         },
         { provide: NotificationsService, useValue: { queueNotification: jest.fn().mockResolvedValue(undefined) } },
         { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([{ affected: 1 }]) } },
         { provide: 'winston', useValue: { log: jest.fn(), warn: jest.fn(), error: jest.fn() } },
       ],
     }).compile();

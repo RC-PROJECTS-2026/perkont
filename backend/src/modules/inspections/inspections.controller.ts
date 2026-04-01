@@ -24,6 +24,23 @@ import { verifyTenantAccess } from '@/common/guards/tenant-verify.helper';
 export class InspectionsController {
   constructor(private service: InspectionsService, private dataSource: DataSource) {}
 
+  @Get('equipment/:equipmentId/history')
+  @Roles(UserRole.INSPECTOR, UserRole.TECHNICAL_MANAGER, UserRole.ADMIN, UserRole.PLANNER)
+  @ApiOperation({ summary: 'Ekipmanin onceki denetim sonuclari' })
+  async getEquipmentHistory(@Param('equipmentId') equipmentId: string) {
+    return this.dataSource.query(`
+      SELECT i.id, i.status, i.overallResult, i.completedAt, i.inspectorNotes,
+             i.reviewerNotes, u.fullName as inspectorName,
+             r.reportNumber, r.status as reportStatus
+      FROM inspections i
+      LEFT JOIN users u ON u.id = i.inspectorId
+      LEFT JOIN reports r ON r.inspectionId = i.id
+      WHERE i.equipmentId = ?
+      ORDER BY i.completedAt DESC
+      LIMIT 20
+    `, [equipmentId]);
+  }
+
   @Post()
   @Roles(UserRole.INSPECTOR, UserRole.ADMIN)
   @ApiOperation({ summary: 'Denetim başlat' })

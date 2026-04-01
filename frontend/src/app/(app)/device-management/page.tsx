@@ -54,7 +54,7 @@ export default function DeviceManagementPage() {
   // Device logs query (only when a device is expanded)
   const { data: logsData, isLoading: logsLoading } = useQuery({
     queryKey: ['device-logs', expandedDevice],
-    queryFn: () => expandedDevice ? apiClient.get(`/device-management/logs/${expandedDevice}`) : Promise.resolve({ data: [] }),
+    queryFn: () => expandedDevice ? apiClient.get(`/device-management/logs/${expandedDevice}`) : apiClient.get('/device-management/logs/__none__'),
     enabled: !!expandedDevice,
   });
   const deviceLogs = (logsData as any)?.data?.data || (logsData as any)?.data || [];

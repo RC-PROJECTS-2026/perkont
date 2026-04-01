@@ -8,6 +8,7 @@ import { LogoSyncQueue } from '@/modules/logo/entities/logo-sync-queue.entity';
 import { DashboardService } from './dashboard.service';
 import { DashboardController } from './dashboard.controller';
 import { ScheduledTasksService } from './scheduled-tasks.service';
+import { ExecutiveBiService } from './executive-bi.service';
 import { NotificationsModule } from '@/modules/notifications/notifications.module';
 import { UsersModule } from '@/modules/users/users.module';
 
@@ -17,7 +18,7 @@ import { UsersModule } from '@/modules/users/users.module';
     NotificationsModule,
     UsersModule,
   ],
-  providers: [DashboardService, ScheduledTasksService],
+  providers: [DashboardService, ScheduledTasksService, ExecutiveBiService],
   controllers: [DashboardController],
   exports: [DashboardService],
 })

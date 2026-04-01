@@ -79,7 +79,6 @@ export class FormTemplate extends AbstractEntity {
 
   @OneToMany(() => FormField, (f) => f.template, {
     cascade: true,
-    eager: true,
   })
   fields: FormField[];
 }

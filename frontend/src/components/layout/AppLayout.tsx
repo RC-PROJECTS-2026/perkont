@@ -43,8 +43,8 @@ function Header({ sidebarCollapsed, onToggleSidebar }: { sidebarCollapsed: boole
   return (
     <header className={cn(
       'fixed top-0 right-0 z-20 h-14 flex items-center gap-4 px-5',
-      'bg-[hsl(var(--background))]/80 backdrop-blur-xl',
-      'border-b border-[hsl(var(--border))]',
+      'backdrop-blur-xl',
+      'border-b border-white/[0.04]',
       'transition-all duration-300',
       sidebarCollapsed ? 'left-16' : 'left-[260px]',
     )}>
@@ -86,7 +86,7 @@ function Header({ sidebarCollapsed, onToggleSidebar }: { sidebarCollapsed: boole
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={{ background: 'var(--surface-base, hsl(var(--background)))' }}>
       <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((v) => !v)} />
       <Header sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((v) => !v)} />
       <main className={cn('pt-14 min-h-screen transition-all duration-300', sidebarCollapsed ? 'pl-16' : 'pl-[260px]')}>

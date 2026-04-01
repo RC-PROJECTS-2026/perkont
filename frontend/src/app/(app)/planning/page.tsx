@@ -1,34 +1,58 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { workOrdersApi, usersApi, useMutationWithToast } from '@/lib/api';
+import { workOrdersApi, usersApi } from '@/lib/api';
 import { PageHeader, Card, Badge, Button, Select } from '@/components/ui';
-import { formatDate, WORK_ORDER_STATUS_LABELS } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import {
   ChevronLeft, ChevronRight, Calendar, Users,
-  Plus, RefreshCw, Clock,
+  Plus, RefreshCw, Clock, MapPin, Package,
 } from 'lucide-react';
 import {
-  format, startOfWeek, endOfWeek, eachDayOfInterval,
-  addWeeks, subWeeks, isSameDay, isToday, parseISO,
+  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
+  eachDayOfInterval, addMonths, subMonths,
+  isSameDay, isSameMonth, isToday, parseISO,
 } from 'date-fns';
 import { tr } from 'date-fns/locale';
 
-export default function PlanningPage() {
-  const [currentWeek, setCurrentWeek] = useState(new Date());
-  const [inspectorFilter, setInspectorFilter] = useState('');
+const STATUS_COLORS: Record<string, string> = {
+  draft:           'bg-slate-500/20 border-l-slate-400 text-slate-300',
+  planned:         'bg-blue-500/20 border-l-blue-400 text-blue-300',
+  assigned:        'bg-violet-500/20 border-l-violet-400 text-violet-300',
+  in_progress:     'bg-amber-500/20 border-l-amber-400 text-amber-300',
+  postponed:       'bg-orange-500/20 border-l-orange-400 text-orange-300',
+  completed:       'bg-green-500/20 border-l-green-400 text-green-300',
+  report_pending:  'bg-cyan-500/20 border-l-cyan-400 text-cyan-300',
+  report_approved: 'bg-teal-500/20 border-l-teal-400 text-teal-300',
+  invoiced:        'bg-slate-500/10 border-l-slate-500 text-slate-400',
+  cancelled:       'bg-red-500/20 border-l-red-400 text-red-400',
+};
 
-  const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
-  const weekEnd   = endOfWeek(currentWeek, { weekStartsOn: 1 });
-  const weekDays  = eachDayOfInterval({ start: weekStart, end: weekEnd });
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'Taslak', planned: 'Planlandı', assigned: 'Atandı',
+  in_progress: 'Devam Ediyor', postponed: 'Ertelendi', completed: 'Tamamlandı',
+  report_pending: 'Rapor Bekliyor', report_approved: 'Rapor Onaylı',
+  invoiced: 'Faturalandı', cancelled: 'İptal',
+};
+
+export default function PlanningPage() {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [inspectorFilter, setInspectorFilter] = useState('');
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const calDays = eachDayOfInterval({ start: calStart, end: calEnd });
 
   const { data: woData, isLoading, refetch } = useQuery({
-    queryKey: ['work-orders-planning', format(weekStart, 'yyyy-MM-dd'), inspectorFilter],
+    queryKey: ['work-orders-planning', format(calStart, 'yyyy-MM-dd'), format(calEnd, 'yyyy-MM-dd'), inspectorFilter],
     queryFn: () => workOrdersApi.list({
-      startDate: format(weekStart, 'yyyy-MM-dd'),
-      endDate:   format(weekEnd,   'yyyy-MM-dd'),
+      startDate: format(calStart, 'yyyy-MM-dd'),
+      endDate: format(calEnd, 'yyyy-MM-dd'),
       inspectorId: inspectorFilter || undefined,
-      limit: 200,
+      limit: 500,
     }),
   });
 
@@ -37,31 +61,23 @@ export default function PlanningPage() {
     queryFn: () => usersApi.list({ limit: 100 }),
   });
 
-  const workOrders = (woData as any)?.data?.data || [];
-  const inspectors = ((usersData as any)?.data?.data || []).filter(
-    (u: any) => u.role === 'inspector',
-  );
+  const workOrders = (woData as any)?.data?.data || (woData as any)?.data || [];
+  const allUsers = (usersData as any)?.data?.data || (usersData as any)?.data || [];
+  const inspectors = allUsers.filter((u: any) => (u.roles || u.role || '').includes('inspector'));
 
   const getOrdersForDay = (day: Date) =>
-    workOrders.filter((wo: any) =>
-      wo.plannedDate && isSameDay(parseISO(wo.plannedDate), day),
-    );
+    workOrders.filter((wo: any) => wo.plannedDate && isSameDay(parseISO(wo.plannedDate), day));
 
-  const statusColors: Record<string, string> = {
-    draft:           'bg-slate-100 border-slate-300 text-slate-600',
-    planned:         'bg-blue-50  border-blue-200  text-blue-700',
-    assigned:        'bg-violet-50 border-violet-200 text-violet-700',
-    in_progress:     'bg-amber-50 border-amber-200  text-amber-700',
-    completed:       'bg-green-50 border-green-200  text-green-700',
-    report_approved: 'bg-teal-50  border-teal-200   text-teal-700',
-    invoiced:        'bg-slate-50 border-slate-200  text-slate-500',
-  };
+  const selectedOrders = selectedDay ? getOrdersForDay(selectedDay) : [];
+
+  const totalOrders = workOrders.length;
+  const uniqueInspectors = new Set(workOrders.map((w: any) => w.assignedInspectorId).filter(Boolean)).size;
 
   return (
     <>
       <PageHeader
         title="Planlama Takvimi"
-        subtitle={`${format(weekStart, 'd MMM', { locale: tr })} — ${format(weekEnd, 'd MMM yyyy', { locale: tr })}`}
+        subtitle={format(currentMonth, 'MMMM yyyy', { locale: tr })}
         actions={
           <>
             <Select
@@ -81,163 +97,187 @@ export default function PlanningPage() {
         }
       />
 
-      {/* Week navigator */}
+      {/* Ay navigasyonu */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
-          >
+          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500">
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <button
-            onClick={() => setCurrentWeek(new Date())}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 hover:bg-teal-100"
-          >
-            Bu Hafta
+          <button onClick={() => setCurrentMonth(new Date())}
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 hover:bg-teal-100">
+            Bu Ay
           </button>
-          <button
-            onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
-          >
+          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500">
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Summary stats */}
         <div className="flex items-center gap-4 text-sm text-slate-500">
           <span className="flex items-center gap-1.5">
-            <Calendar className="w-4 h-4" />
-            {workOrders.length} iş emri
+            <Calendar className="w-4 h-4" /> {totalOrders} iş emri
           </span>
           <span className="flex items-center gap-1.5">
-            <Users className="w-4 h-4" />
-            {new Set(workOrders.map((w: any) => w.assignedInspectorId).filter(Boolean)).size} muayene elemanı
+            <Users className="w-4 h-4" /> {uniqueInspectors} muayene elemanı
           </span>
         </div>
       </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-3">
-        {weekDays.map((day) => {
-          const orders = getOrdersForDay(day);
-          const today  = isToday(day);
-
-          return (
-            <div key={day.toISOString()} className="min-h-40">
-              {/* Day header */}
-              <div className={`
-                text-center p-2 rounded-xl mb-2 font-semibold text-sm
-                ${today
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                }
-              `}>
-                <div className="text-xs font-medium opacity-70">
-                  {format(day, 'EEE', { locale: tr })}
+      <div className="flex gap-4">
+        {/* Aylık takvim */}
+        <div className="flex-1">
+          <Card padding="none">
+            {/* Gün başlıkları */}
+            <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700">
+              {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map(d => (
+                <div key={d} className="text-center py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  {d}
                 </div>
-                <div className="text-lg font-extrabold">{format(day, 'd')}</div>
-              </div>
-
-              {/* Work orders */}
-              <div className="space-y-1.5">
-                {orders.map((wo: any) => (
-                  <a
-                    key={wo.id}
-                    href={`/work-orders/${wo.id}`}
-                    className={`
-                      block p-2 rounded-lg border text-xs transition-all hover:shadow-sm
-                      ${statusColors[wo.status] || 'bg-slate-50 border-slate-200 text-slate-600'}
-                    `}
-                  >
-                    <div className="font-bold truncate">{wo.workOrderNumber}</div>
-                    <div className="truncate opacity-75 mt-0.5">{wo.customer?.name}</div>
-                    {wo.plannedTime && (
-                      <div className="flex items-center gap-1 mt-1 opacity-60">
-                        <Clock className="w-3 h-3" />
-                        {wo.plannedTime.slice(0, 5)}
-                      </div>
-                    )}
-                    {wo.equipmentItems?.length > 0 && (
-                      <div className="mt-1 opacity-60">{wo.equipmentItems.length} ekipman</div>
-                    )}
-                  </a>
-                ))}
-
-                {isLoading && (
-                  <div className="h-8 skeleton rounded-lg" />
-                )}
-              </div>
+              ))}
             </div>
-          );
-        })}
-      </div>
 
-      {/* Inspector workload table */}
-      {inspectors.length > 0 && (
-        <Card className="mt-6">
-          <div className="mb-4 font-display font-bold text-base text-slate-900 dark:text-slate-100">
-            Muayene Elemanı İş Yükü — Bu Hafta
-          </div>
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Muayene Elemanı</th>
-                  {weekDays.map((d) => (
-                    <th key={d.toISOString()} className={isToday(d) ? 'bg-teal-50 dark:bg-teal-950/30 text-teal-600' : ''}>
-                      {format(d, 'EEE d', { locale: tr })}
-                    </th>
-                  ))}
-                  <th>Toplam</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inspectors.map((inspector: any) => {
-                  const dailyCounts = weekDays.map((day) =>
-                    workOrders.filter(
-                      (wo: any) =>
-                        wo.assignedInspectorId === inspector.id &&
-                        wo.plannedDate &&
-                        isSameDay(parseISO(wo.plannedDate), day),
-                    ).length,
-                  );
-                  const total = dailyCounts.reduce((a, b) => a + b, 0);
-                  if (total === 0) return null;
+            {/* Günler */}
+            <div className="grid grid-cols-7">
+              {calDays.map((day) => {
+                const orders = getOrdersForDay(day);
+                const today = isToday(day);
+                const inMonth = isSameMonth(day, currentMonth);
+                const isSelected = selectedDay && isSameDay(day, selectedDay);
 
-                  return (
-                    <tr key={inspector.id}>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center flex-shrink-0">
-                            <span className="text-white text-xs font-bold">{inspector.fullName.charAt(0)}</span>
-                          </div>
-                          <span className="text-sm font-medium">{inspector.fullName}</span>
-                        </div>
-                      </td>
-                      {dailyCounts.map((count, i) => (
-                        <td key={i} className={`text-center ${isToday(weekDays[i]) ? 'bg-teal-50 dark:bg-teal-950/20' : ''}`}>
-                          {count > 0 ? (
-                            <span className={`
-                              inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold
-                              ${count >= 4 ? 'bg-red-100 text-red-700' : count >= 2 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}
-                            `}>
-                              {count}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
+                return (
+                  <button
+                    key={day.toISOString()}
+                    onClick={() => setSelectedDay(isSelected ? null : day)}
+                    className={cn(
+                      'min-h-[90px] p-1.5 border-b border-r border-slate-100 dark:border-slate-800 text-left transition-all',
+                      !inMonth && 'opacity-30',
+                      isSelected && 'bg-teal-950/30 ring-1 ring-teal-500 ring-inset',
+                      !isSelected && 'hover:bg-slate-50 dark:hover:bg-slate-800/30',
+                    )}
+                  >
+                    {/* Gün numarası */}
+                    <div className={cn(
+                      'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-1',
+                      today ? 'bg-teal-600 text-white' : 'text-slate-500 dark:text-slate-400',
+                    )}>
+                      {format(day, 'd')}
+                    </div>
+
+                    {/* İş emirleri */}
+                    <div className="space-y-0.5">
+                      {orders.slice(0, 3).map((wo: any) => (
+                        <div
+                          key={wo.id}
+                          className={cn(
+                            'text-[10px] leading-tight px-1.5 py-0.5 rounded border-l-2 truncate',
+                            STATUS_COLORS[wo.status] || STATUS_COLORS.draft,
                           )}
-                        </td>
+                        >
+                          {wo.workOrderNumber?.replace('IE-2026-', '')} {wo.customer?.name?.substring(0, 15)}
+                        </div>
                       ))}
-                      <td className="text-center font-bold text-slate-700 dark:text-slate-300">{total}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      {orders.length > 3 && (
+                        <div className="text-[10px] text-slate-400 px-1.5">+{orders.length - 3} daha</div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Durum renkleri açıklama */}
+          <div className="flex flex-wrap gap-3 mt-3 px-1">
+            {Object.entries(STATUS_LABELS).slice(0, 7).map(([key, label]) => (
+              <div key={key} className="flex items-center gap-1.5">
+                <div className={cn('w-2.5 h-2.5 rounded-sm border-l-2', STATUS_COLORS[key])} />
+                <span className="text-[10px] text-slate-500">{label}</span>
+              </div>
+            ))}
           </div>
-        </Card>
-      )}
+        </div>
+
+        {/* Sağ panel - seçili gün detayı */}
+        <div className="w-80 flex-shrink-0 hidden lg:block">
+          <Card className="sticky top-4">
+            {selectedDay ? (
+              <>
+                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                  <div className={cn(
+                    'w-10 h-10 rounded-xl flex items-center justify-center font-bold',
+                    isToday(selectedDay) ? 'bg-teal-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
+                  )}>
+                    {format(selectedDay, 'd')}
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">{format(selectedDay, 'EEEE', { locale: tr })}</p>
+                    <p className="text-xs text-slate-400">{format(selectedDay, 'd MMMM yyyy', { locale: tr })}</p>
+                  </div>
+                </div>
+
+                {selectedOrders.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Bu gün için iş emri yok</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      {selectedOrders.length} İş Emri
+                    </p>
+                    {selectedOrders.map((wo: any) => (
+                      <a
+                        key={wo.id}
+                        href={`/work-orders/${wo.id}`}
+                        className={cn(
+                          'block p-3 rounded-lg border-l-3 transition-all hover:shadow-md',
+                          STATUS_COLORS[wo.status] || STATUS_COLORS.draft,
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-sm">{wo.workOrderNumber}</span>
+                          <Badge color={STATUS_COLORS[wo.status]?.replace('border-l-', 'bg-').split(' ')[0]}>
+                            {STATUS_LABELS[wo.status] || wo.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs font-medium truncate mb-2">{wo.customer?.name || '—'}</p>
+
+                        {wo.plannedTime && (
+                          <div className="flex items-center gap-1 text-[11px] opacity-70 mb-1">
+                            <Clock className="w-3 h-3" /> {wo.plannedTime.slice(0, 5)}
+                          </div>
+                        )}
+                        {wo.location?.name && (
+                          <div className="flex items-center gap-1 text-[11px] opacity-70 mb-1">
+                            <MapPin className="w-3 h-3" /> {wo.location.name}
+                          </div>
+                        )}
+                        {wo.assignedInspector?.fullName && (
+                          <div className="flex items-center gap-1 text-[11px] opacity-70 mb-1">
+                            <Users className="w-3 h-3" /> {wo.assignedInspector.fullName}
+                          </div>
+                        )}
+                        {(wo.equipmentItems?.length > 0 || wo.equipmentCount > 0) && (
+                          <div className="flex items-center gap-1 text-[11px] opacity-70">
+                            <Package className="w-3 h-3" /> {wo.equipmentItems?.length || wo.equipmentCount} ekipman
+                          </div>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12 text-slate-400">
+                <Calendar className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm font-medium">Bir gün seçin</p>
+                <p className="text-xs mt-1">Takvimde bir güne tıklayarak detayları görün</p>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
     </>
   );
 }

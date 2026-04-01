@@ -99,6 +99,27 @@ export class WorkOrdersService {
       if (contractRows.length > 0 && !['active', 'signed'].includes(contractRows[0].status)) {
         throw new BadRequestException('Sözleşme aktif veya imzalı durumda olmalıdır');
       }
+
+      // Sozlesme kapsam kontrolu: WO ekipman tipleri sozlesme kapsaminda mi?
+      if (dto.equipmentItems?.length > 0) {
+        const eqTypeRows = await this.dataSource.query(
+          `SELECT DISTINCT e.equipmentTypeId, et.name as typeName
+           FROM equipment e JOIN equipment_types et ON et.id = e.equipmentTypeId
+           WHERE e.id IN (${dto.equipmentItems.map(() => '?').join(',')})`,
+          dto.equipmentItems.map(i => i.equipmentId),
+        );
+        for (const et of eqTypeRows) {
+          const scopeCheck = await this.dataSource.query(
+            `SELECT COUNT(*) as c FROM contract_scope_items WHERE contractId = ? AND equipmentTypeId = ?`,
+            [dto.contractId, et.equipmentTypeId],
+          );
+          if (Number(scopeCheck[0]?.c) === 0) {
+            throw new BadRequestException(
+              `"${et.typeName}" ekipman tipi bu sözleşmenin kapsamında değil. Sözleşme kapsamını güncelleyin veya doğru sözleşmeyi seçin.`,
+            );
+          }
+        }
+      }
     } else {
       // contractId verilmemişse: şirket ayarına bak
       const companyRows = await this.dataSource.query(
@@ -184,6 +205,32 @@ export class WorkOrdersService {
       throw new BadRequestException('Tamamlanmış veya faturalanmış iş emri yeniden atanamaz. Yeni bir iş emri oluşturun.');
     }
 
+    // Personel yetkilendirme kontrolu: denetci bu ekipman tiplerinde yetkili mi?
+    try {
+      const woEquipmentTypes = await this.dataSource.query(
+        `SELECT DISTINCT e.equipmentTypeId, et.name FROM work_order_equipment woe
+         JOIN equipment e ON e.id = woe.equipmentId
+         JOIN equipment_types et ON et.id = e.equipmentTypeId
+         WHERE woe.workOrderId = ?`, [id]
+      );
+      for (const et of woEquipmentTypes) {
+        const authCheck = await this.dataSource.query(
+          `SELECT COUNT(*) as c FROM personnel_authorizations
+           WHERE userId = ? AND equipmentTypeId = ? AND isActive = 1
+           AND (expiresAt IS NULL OR expiresAt >= CURDATE())`,
+          [dto.inspectorId, et.equipmentTypeId]
+        );
+        if (Number(authCheck[0]?.c) === 0) {
+          throw new BadRequestException(
+            `Denetçi "${et.name}" ekipman tipinde yetkili değil. Önce personel yetkilendirme kaydı oluşturun.`
+          );
+        }
+      }
+    } catch (e) {
+      if (e instanceof BadRequestException) throw e;
+      // personnel_authorizations tablosu yoksa veya baska hata → atla (geriye uyumluluk)
+    }
+
     await this.workOrderRepo.update(id, {
       assignedInspectorId: dto.inspectorId,
       assignedById,
@@ -193,18 +240,22 @@ export class WorkOrdersService {
       status: WorkOrderStatus.ASSIGNED,
     });
 
-    // Muayene elemanına bildirim
-    const inspector = await this.usersService.findOne(dto.inspectorId);
-    if (inspector.phone || inspector.email) {
-      await this.notificationsService.notifyWorkOrderAssigned(
-        inspector.email,
-        inspector.phone,
-        {
-          workOrderNumber: workOrder.workOrderNumber,
-          customerName: workOrder.customer?.name || '',
-          plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : workOrder.plannedDate,
-        },
-      );
+    // Muayene elemanına bildirim — hata olursa atama islemi engellenmemeli
+    try {
+      const inspector = await this.usersService.findOne(dto.inspectorId);
+      if (inspector?.phone || inspector?.email) {
+        await this.notificationsService.notifyWorkOrderAssigned(
+          inspector.email,
+          inspector.phone,
+          {
+            workOrderNumber: workOrder.workOrderNumber,
+            customerName: workOrder.customer?.name || '',
+            plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : workOrder.plannedDate,
+          },
+        );
+      }
+    } catch {
+      // Inspector bulunamazsa veya bildirim gonderilemezse atama yine basarili olsun
     }
 
     await this.auditService.log({
@@ -330,9 +381,34 @@ export class WorkOrdersService {
     return qb.orderBy('wo.updatedAt', 'ASC').getMany();
   }
 
+  // ─── Work Order State Machine ─────────────────────────────────────────────
+  private static readonly VALID_WO_TRANSITIONS: Record<string, string[]> = {
+    [WorkOrderStatus.DRAFT]:           [WorkOrderStatus.PLANNED, WorkOrderStatus.ASSIGNED, WorkOrderStatus.CANCELLED],
+    [WorkOrderStatus.PLANNED]:         [WorkOrderStatus.ASSIGNED, WorkOrderStatus.POSTPONED, WorkOrderStatus.CANCELLED],
+    [WorkOrderStatus.ASSIGNED]:        [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.PLANNED, WorkOrderStatus.POSTPONED, WorkOrderStatus.CANCELLED],
+    [WorkOrderStatus.IN_PROGRESS]:     [WorkOrderStatus.COMPLETED, WorkOrderStatus.POSTPONED, WorkOrderStatus.CANCELLED],
+    [WorkOrderStatus.POSTPONED]:       [WorkOrderStatus.PLANNED, WorkOrderStatus.ASSIGNED, WorkOrderStatus.CANCELLED],
+    [WorkOrderStatus.COMPLETED]:       [WorkOrderStatus.REPORT_PENDING],
+    [WorkOrderStatus.REPORT_PENDING]:  [WorkOrderStatus.REPORT_APPROVED],
+    [WorkOrderStatus.REPORT_APPROVED]: [WorkOrderStatus.INVOICED],
+    [WorkOrderStatus.INVOICED]:        [],
+    [WorkOrderStatus.CANCELLED]:       [],
+  };
+
+  private validateWoTransition(current: string, next: string): void {
+    const allowed = WorkOrdersService.VALID_WO_TRANSITIONS[current];
+    if (!allowed || !allowed.includes(next)) {
+      throw new BadRequestException(
+        `İş emri durumu '${current}' → '${next}' geçişi yapılamaz. İzin verilen: ${allowed?.join(', ') || 'yok'}`,
+      );
+    }
+  }
+
   async updateStatus(id: string, status: WorkOrderStatus, userId: string): Promise<WorkOrder> {
     const wo = await this.findOne(id);
     const oldStatus = wo.status;
+
+    this.validateWoTransition(oldStatus, status);
 
     const updates: Partial<WorkOrder> = { status };
     if (status === WorkOrderStatus.COMPLETED) {

@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PerKont - Sistem Mimarisi & Veritabanı Diyagramı</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e293b, #334155);
+            padding: 24px 40px;
+            border-bottom: 2px solid #3b82f6;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header h1 {
+            font-size: 28px;
+            color: #60a5fa;
+        }
+        .header span {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .tabs {
+            display: flex;
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            padding: 0 40px;
+        }
+        .tab {
+            padding: 14px 28px;
+            cursor: pointer;
+            color: #94a3b8;
+            font-weight: 600;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: #e2e8f0; }
+        .tab.active {
+            color: #60a5fa;
+            border-bottom-color: #3b82f6;
+        }
+        .content { padding: 32px 40px; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .mermaid {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 16px 0;
+            overflow-x: auto;
+            border: 1px solid #334155;
+        }
+        h2 {
+            color: #60a5fa;
+            margin: 24px 0 12px 0;
+            font-size: 20px;
+        }
+        h3 {
+            color: #93c5fd;
+            margin: 16px 0 8px 0;
+            font-size: 16px;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+        }
+        .info-box {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #1e293b, #1e3a5f);
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-card .number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #60a5fa;
+        }
+        .stat-card .label {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>PerKont</h1>
+    <span>Akredite İş Ekipmanları Periyodik Kontrol Yönetim Sistemi — Mimari Diyagramları</span>
+</div>
+
+<div class="tabs">
+    <div class="tab active" onclick="showTab('overview')">Genel Bakış</div>
+    <div class="tab" onclick="showTab('database')">Veritabanı (ER)</div>
+    <div class="tab" onclick="showTab('modules')">Modül Yapısı</div>
+    <div class="tab" onclick="showTab('deploy')">Deployment</div>
+    <div class="tab" onclick="showTab('flow')">İş Akışları</div>
+</div>
+
+<div class="content">
+
+    <!-- ==================== GENEL BAKIŞ ==================== -->
+    <div id="overview" class="section active">
+        <h2>Sistem Mimarisi — Genel Bakış</h2>
+
+        <div class="stats-grid">
+            <div class="stat-card"><div class="number">40+</div><div class="label">Backend Modül</div></div>
+            <div class="stat-card"><div class="number">50+</div><div class="label">Veritabanı Tablosu</div></div>
+            <div class="stat-card"><div class="number">3</div><div class="label">Platform (Web, Mobile, API)</div></div>
+            <div class="stat-card"><div class="number">7</div><div class="label">Migration Dosyası</div></div>
+            <div class="stat-card"><div class="number">18</div><div class="label">Controller</div></div>
+            <div class="stat-card"><div class="number">25</div><div class="label">Service</div></div>
+        </div>
+
+        <div class="mermaid">
+graph TB
+    subgraph CLIENT["🖥️ İstemciler"]
+        WEB["Next.js 14<br/>Web Uygulaması<br/>:3001"]
+        MOBILE["React Native / Expo<br/>Mobil Uygulama"]
+        PORTAL["Müşteri Portalı"]
+    end
+
+    subgraph LB["⚖️ Yük Dengeleme"]
+        NGINX["Nginx<br/>Reverse Proxy"]
+    end
+
+    subgraph API["🔧 Backend API"]
+        NEST1["NestJS API<br/>Instance 1<br/>:3000"]
+        NEST2["NestJS API<br/>Instance 2<br/>:3000"]
+    end
+
+    subgraph DATA["💾 Veri Katmanı"]
+        MYSQL_P["MySQL 8.0<br/>Primary"]
+        MYSQL_R["MySQL 8.0<br/>Replica"]
+        REDIS_P["Redis<br/>Primary"]
+        REDIS_R1["Redis<br/>Replica 1"]
+        REDIS_R2["Redis<br/>Replica 2"]
+        MINIO["MinIO<br/>Object Storage"]
+    end
+
+    subgraph QUEUE["📨 Kuyruk Sistemi"]
+        BULL["BullMQ<br/>Job Queue"]
+    end
+
+    subgraph EXT["🌐 Dış Entegrasyonlar"]
+        LOGO["LOGO ERP"]
+        IYZIPAY["Iyzipay<br/>Ödeme"]
+        NETGSM["Netgsm<br/>SMS"]
+        SMTP["SMTP<br/>E-posta"]
+        ESIGN["E-İmza<br/>Sağlayıcı"]
+    end
+
+    subgraph MON["📊 İzleme"]
+        ELK["ELK Stack<br/>Logstash"]
+    end
+
+    WEB --> NGINX
+    MOBILE --> NGINX
+    PORTAL --> NGINX
+    NGINX --> NEST1
+    NGINX --> NEST2
+    NEST1 --> MYSQL_P
+    NEST2 --> MYSQL_P
+    MYSQL_P --> MYSQL_R
+    NEST1 --> REDIS_P
+    NEST2 --> REDIS_P
+    REDIS_P --> REDIS_R1
+    REDIS_P --> REDIS_R2
+    NEST1 --> MINIO
+    NEST2 --> MINIO
+    NEST1 --> BULL
+    NEST2 --> BULL
+    BULL --> REDIS_P
+    BULL --> LOGO
+    NEST1 --> IYZIPAY
+    NEST1 --> NETGSM
+    NEST1 --> SMTP
+    NEST1 --> ESIGN
+    NEST1 --> ELK
+    NEST2 --> ELK
+
+    style CLIENT fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0
+    style LB fill:#312e81,stroke:#6366f1,color:#e2e8f0
+    style API fill:#064e3b,stroke:#10b981,color:#e2e8f0
+    style DATA fill:#7c2d12,stroke:#f97316,color:#e2e8f0
+    style QUEUE fill:#4a1d96,stroke:#a78bfa,color:#e2e8f0
+    style EXT fill:#4c1d95,stroke:#c084fc,color:#e2e8f0
+    style MON fill:#1e3a5f,stroke:#38bdf8,color:#e2e8f0
+        </div>
+    </div>
+
+    <!-- ==================== VERİTABANI ==================== -->
+    <div id="database" class="section">
+        <h2>Veritabanı ER Diyagramı</h2>
+
+        <div class="legend">
+            <div class="legend-item"><div class="legend-color" style="background:#3b82f6"></div> Çekirdek Tablolar</div>
+            <div class="legend-item"><div class="legend-color" style="background:#10b981"></div> Denetim & Rapor</div>
+            <div class="legend-item"><div class="legend-color" style="background:#f59e0b"></div> Akreditasyon & Uyum</div>
+            <div class="legend-item"><div class="legend-color" style="background:#ef4444"></div> Ticari & Finans</div>
+        </div>
+
+        <h3>Çekirdek Tablolar & İlişkiler</h3>
+        <div class="mermaid">
+erDiagram
+    users {
+        uuid id PK
+        varchar email UK
+        varchar password_hash
+        varchar first_name
+        varchar last_name
+        enum role
+        varchar phone
+        boolean is_active
+        boolean mfa_enabled
+        varchar mfa_secret
+        uuid company_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    customers {
+        uuid id PK
+        varchar company_name
+        varchar tax_number UK
+        varchar tax_office
+        varchar address
+        varchar city
+        varchar phone
+        varchar email
+        uuid company_id FK
+        timestamp created_at
+    }
+
+    customer_locations {
+        uuid id PK
+        uuid customer_id FK
+        varchar name
+        varchar address
+        varchar city
+        decimal latitude
+        decimal longitude
+        boolean is_active
+    }
+
+    equipment_types {
+        uuid id PK
+        varchar name
+        varchar code UK
+        varchar standard_reference
+        int default_control_period_months
+        uuid company_id FK
+    }
+
+    equipment {
+        uuid id PK
+        uuid customer_id FK
+        uuid equipment_type_id FK
+        uuid location_id FK
+        varchar serial_number
+        varchar brand
+        varchar model
+        int manufacturing_year
+        varchar qr_code UK
+        enum status
+        date next_control_date
+        uuid company_id FK
+    }
+
+    form_templates {
+        uuid id PK
+        varchar name
+        uuid equipment_type_id FK
+        int version
+        enum status
+        json schema
+        uuid company_id FK
+    }
+
+    form_fields {
+        uuid id PK
+        uuid form_template_id FK
+        varchar field_name
+        enum field_type
+        boolean is_required
+        int sort_order
+        json options
+    }
+
+    customers ||--o{ customer_locations : "has"
+    customers ||--o{ equipment : "owns"
+    equipment_types ||--o{ equipment : "categorizes"
+    customer_locations ||--o{ equipment : "located_at"
+    equipment_types ||--o{ form_templates : "defines"
+    form_templates ||--o{ form_fields : "contains"
+        </div>
+
+        <h3>Denetim & Raporlama</h3>
+        <div class="mermaid">
+erDiagram
+    work_orders {
+        uuid id PK
+        varchar order_number UK
+        uuid customer_id FK
+        uuid inspector_id FK
+        date planned_date
+        enum status
+        text notes
+        uuid company_id FK
+    }
+
+    work_order_equipment {
+        uuid id PK
+        uuid work_order_id FK
+        uuid equipment_id FK
+    }
+
+    inspections {
+        uuid id PK
+        uuid equipment_id FK
+        uuid inspector_id FK
+        uuid work_order_id FK
+        uuid form_template_id FK
+        enum status
+        enum result
+        datetime started_at
+        datetime completed_at
+        varchar offline_id
+        uuid company_id FK
+    }
+
+    inspection_field_values {
+        uuid id PK
+        uuid inspection_id FK
+        uuid form_field_id FK
+        text value
+        text notes
+    }
+
+    inspection_photos {
+        uuid id PK
+        uuid inspection_id FK
+        varchar file_path
+        varchar description
+        decimal latitude
+        decimal longitude
+    }
+
+    inspection_nonconformities {
+        uuid id PK
+        uuid inspection_id FK
+        varchar code
+        text description
+        enum severity
+        text recommendation
+    }
+
+    inspection_instruments {
+        uuid id PK
+        uuid inspection_id FK
+        varchar instrument_name
+        varchar serial_number
+        date calibration_date
+        date calibration_expiry
+    }
+
+    reports {
+        uuid id PK
+        uuid inspection_id FK
+        varchar report_number UK
+        enum status
+        varchar file_path
+        datetime generated_at
+        uuid company_id FK
+    }
+
+    report_approvals {
+        uuid id PK
+        uuid report_id FK
+        uuid approver_id FK
+        enum status
+        text comments
+        datetime approved_at
+    }
+
+    report_signatures {
+        uuid id PK
+        uuid report_id FK
+        uuid signer_id FK
+        varchar signature_data
+        datetime signed_at
+        varchar ip_address
+    }
+
+    work_orders ||--o{ work_order_equipment : "includes"
+    work_orders ||--o{ inspections : "generates"
+    inspections ||--o{ inspection_field_values : "has"
+    inspections ||--o{ inspection_photos : "has"
+    inspections ||--o{ inspection_nonconformities : "flags"
+    inspections ||--o{ inspection_instruments : "uses"
+    inspections ||--|| reports : "produces"
+    reports ||--o{ report_approvals : "reviewed_by"
+    reports ||--o{ report_signatures : "signed_by"
+        </div>
+
+        <h3>Akreditasyon, Personel & Uyumluluk</h3>
+        <div class="mermaid">
+erDiagram
+    personnel {
+        uuid id PK
+        uuid user_id FK
+        varchar title
+        varchar department
+        date hire_date
+        enum status
+        uuid company_id FK
+    }
+
+    personnel_certifications {
+        uuid id PK
+        uuid personnel_id FK
+        varchar certification_name
+        varchar issuing_body
+        date issue_date
+        date expiry_date
+        varchar certificate_number
+    }
+
+    contracts {
+        uuid id PK
+        uuid customer_id FK
+        varchar contract_number UK
+        date start_date
+        date end_date
+        decimal total_amount
+        enum status
+        uuid company_id FK
+    }
+
+    quotations {
+        uuid id PK
+        uuid customer_id FK
+        varchar quotation_number UK
+        decimal total_amount
+        enum status
+        date valid_until
+        uuid company_id FK
+    }
+
+    accreditation_records {
+        uuid id PK
+        varchar accreditation_number
+        varchar scope
+        date issue_date
+        date expiry_date
+        enum status
+        uuid company_id FK
+    }
+
+    internal_audits {
+        uuid id PK
+        varchar audit_number
+        date audit_date
+        uuid auditor_id FK
+        text findings
+        enum status
+        uuid company_id FK
+    }
+
+    complaints {
+        uuid id PK
+        varchar complaint_number UK
+        uuid customer_id FK
+        text description
+        enum status
+        enum priority
+        uuid assigned_to FK
+        uuid company_id FK
+    }
+
+    capa_records {
+        uuid id PK
+        varchar capa_number UK
+        enum type
+        text root_cause
+        text corrective_action
+        text preventive_action
+        enum status
+        uuid company_id FK
+    }
+
+    audit_logs {
+        uuid id PK
+        uuid user_id FK
+        varchar action
+        varchar entity_type
+        uuid entity_id
+        json old_values
+        json new_values
+        varchar ip_address
+        timestamp created_at
+    }
+
+    pricing_rules {
+        uuid id PK
+        uuid equipment_type_id FK
+        varchar name
+        enum pricing_type
+        decimal base_price
+        json rules
+        uuid company_id FK
+    }
+
+    invoice_preparation {
+        uuid id PK
+        uuid contract_id FK
+        uuid customer_id FK
+        varchar invoice_number
+        decimal amount
+        enum status
+        uuid company_id FK
+    }
+
+    personnel ||--o{ personnel_certifications : "holds"
+    complaints ||--o{ capa_records : "triggers"
+    contracts ||--o{ invoice_preparation : "invoiced_via"
+        </div>
+    </div>
+
+    <!-- ==================== MODÜL YAPISI ==================== -->
+    <div id="modules" class="section">
+        <h2>NestJS Modül Mimarisi</h2>
+        <div class="mermaid">
+graph TB
+    subgraph CORE["🔐 Çekirdek Modüller"]
+        AUTH["AuthModule<br/>JWT + TOTP MFA"]
+        USERS["UsersModule<br/>Kullanıcı Yönetimi"]
+        COMPANY["CompanyModule<br/>Şirket Ayarları"]
+    end
+
+    subgraph BUSINESS["📋 İş Süreçleri"]
+        CUST["CustomersModule<br/>Müşteriler & Lokasyonlar"]
+        EQUIP["EquipmentModule<br/>Ekipman & QR Kod"]
+        WO["WorkOrdersModule<br/>İş Emri Planlama"]
+        INSP["InspectionsModule<br/>Denetim (Offline-First)"]
+        FORMS["FormTemplatesModule<br/>Dinamik Formlar"]
+        RPT["ReportsModule<br/>PDF & E-İmza"]
+    end
+
+    subgraph ACCRED["🏅 Akreditasyon & Kalite"]
+        ACC["AccreditationModule"]
+        AUDIT["AuditModule<br/>Değişmez Kayıtlar"]
+        CALIB["CalibrationModule"]
+        PERS["PersonnelModule<br/>Sertifikalar"]
+        IAUD["InternalAuditModule"]
+        COMP["ComplaintsModule"]
+        CAPA["CapaModule<br/>Düzeltici/Önleyici"]
+        RISK["RiskModule"]
+    end
+
+    subgraph COMMERCIAL["💰 Ticari"]
+        PRICE["PricingModule"]
+        QUOT["QuotationsModule"]
+        CONTR["ContractsModule"]
+        CENG["ContractEngineModule"]
+        PROP["ProposalsModule"]
+        SALES["SalesPipelineModule"]
+        INV["InvoicePreparationModule"]
+        PAY["PaymentsModule<br/>Iyzipay"]
+    end
+
+    subgraph INTEGRATION["🔗 Entegrasyon"]
+        LOGO["LogoModule<br/>ERP Sync (Queue)"]
+        NOTIF["NotificationsModule<br/>Email / SMS / In-App"]
+        STORE["StorageModule<br/>MinIO S3"]
+        SYNC["SyncModule<br/>Offline Sync"]
+        DEVICE["DeviceManagementModule<br/>IoT"]
+    end
+
+    subgraph ADMIN_MON["📊 Yönetim & İzleme"]
+        ADMIN["AdminModule"]
+        DASH["DashboardModule<br/>KPI Panelleri"]
+        REPORT["ReportingModule"]
+        METRIC["MetricsModule"]
+        MONITOR["MonitoringModule"]
+        HEALTH["HealthModule"]
+        PORTAL_M["PortalModule<br/>Müşteri Portalı"]
+    end
+
+    subgraph SUPPORT["⚙️ Destek"]
+        SLA["SlaModule"]
+        SUBCON["SubcontractorsModule"]
+        QUOTA["StorageQuotaModule"]
+        REFDOC["ReferenceDocsModule"]
+        SHARED["SharedModule"]
+    end
+
+    AUTH --> USERS
+    INSP --> EQUIP
+    INSP --> FORMS
+    INSP --> WO
+    RPT --> INSP
+    WO --> CUST
+    WO --> EQUIP
+    EQUIP --> CUST
+    CAPA --> COMP
+    INV --> CONTR
+    LOGO --> BULL_Q["BullMQ Queue"]
+    NOTIF --> SMTP_S["SMTP"]
+    NOTIF --> SMS_S["Netgsm"]
+    STORE --> MINIO_S["MinIO"]
+    PAY --> IYZ["Iyzipay"]
+
+    style CORE fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0
+    style BUSINESS fill:#064e3b,stroke:#10b981,color:#e2e8f0
+    style ACCRED fill:#78350f,stroke:#f59e0b,color:#e2e8f0
+    style COMMERCIAL fill:#7f1d1d,stroke:#ef4444,color:#e2e8f0
+    style INTEGRATION fill:#4a1d96,stroke:#a78bfa,color:#e2e8f0
+    style ADMIN_MON fill:#1e3a5f,stroke:#38bdf8,color:#e2e8f0
+    style SUPPORT fill:#374151,stroke:#9ca3af,color:#e2e8f0
+        </div>
+
+        <h3>Güvenlik Katmanları</h3>
+        <div class="mermaid">
+graph LR
+    REQ["HTTP İstek"] --> HELMET["Helmet.js<br/>Güvenlik Başlıkları"]
+    HELMET --> CORS["CORS<br/>Origin Kontrolü"]
+    CORS --> THROTTLE["Throttler<br/>Rate Limiting<br/>100 req/60s"]
+    THROTTLE --> JWT["JWT Guard<br/>Token Doğrulama"]
+    JWT --> TENANT["TenantGuard<br/>Çoklu Kiracılık"]
+    TENANT --> ROLE["RolesGuard<br/>Yetki Kontrolü"]
+    ROLE --> PIPE["ValidationPipe<br/>DTO Doğrulama"]
+    PIPE --> CTRL["Controller<br/>İş Mantığı"]
+
+    style REQ fill:#7f1d1d,stroke:#ef4444,color:#e2e8f0
+    style CTRL fill:#064e3b,stroke:#10b981,color:#e2e8f0
+        </div>
+    </div>
+
+    <!-- ==================== DEPLOYMENT ==================== -->
+    <div id="deploy" class="section">
+        <h2>Production Deployment Mimarisi</h2>
+        <div class="mermaid">
+graph TB
+    subgraph CLIENTS["İstemciler"]
+        BROWSER["🌐 Web Browser<br/>Next.js 14"]
+        PHONE["📱 Mobil Uygulama<br/>React Native / Expo"]
+        CPORTAL["🏢 Müşteri Portalı"]
+    end
+
+    subgraph PROXY["Nginx Reverse Proxy"]
+        NG["Nginx<br/>Load Balancer<br/>SSL Termination"]
+    end
+
+    subgraph API_CLUSTER["API Cluster (2x)"]
+        API1["NestJS API #1<br/>512MB RAM<br/>0.5 CPU"]
+        API2["NestJS API #2<br/>512MB RAM<br/>0.5 CPU"]
+    end
+
+    subgraph FE["Frontend Container"]
+        NEXT["Next.js<br/>256MB RAM<br/>0.25 CPU"]
+    end
+
+    subgraph DB_CLUSTER["MySQL Cluster"]
+        DB_P["MySQL Primary<br/>1GB RAM<br/>1 CPU<br/>Port: 3306"]
+        DB_R["MySQL Replica<br/>Read-Only"]
+        DB_B["MySQL Backup<br/>mysqldump cron"]
+    end
+
+    subgraph REDIS_CLUSTER["Redis Sentinel Cluster"]
+        R_P["Redis Primary<br/>256MB"]
+        R_R1["Redis Replica 1"]
+        R_R2["Redis Replica 2"]
+    end
+
+    subgraph STORAGE["Object Storage"]
+        MIN["MinIO Cluster<br/>4 Buckets:<br/>documents, photos,<br/>reports, archive"]
+    end
+
+    subgraph MONITORING["İzleme"]
+        LOG["Logstash<br/>TCP :5000"]
+        ELK2["ELK Stack"]
+    end
+
+    BROWSER --> NG
+    PHONE --> NG
+    CPORTAL --> NG
+    NG --> API1
+    NG --> API2
+    NG --> NEXT
+    API1 --> DB_P
+    API2 --> DB_P
+    DB_P --> DB_R
+    DB_P --> DB_B
+    API1 --> R_P
+    API2 --> R_P
+    R_P --> R_R1
+    R_P --> R_R2
+    API1 --> MIN
+    API2 --> MIN
+    API1 --> LOG
+    API2 --> LOG
+    LOG --> ELK2
+
+    style CLIENTS fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0
+    style PROXY fill:#312e81,stroke:#6366f1,color:#e2e8f0
+    style API_CLUSTER fill:#064e3b,stroke:#10b981,color:#e2e8f0
+    style FE fill:#064e3b,stroke:#34d399,color:#e2e8f0
+    style DB_CLUSTER fill:#7c2d12,stroke:#f97316,color:#e2e8f0
+    style REDIS_CLUSTER fill:#7f1d1d,stroke:#ef4444,color:#e2e8f0
+    style STORAGE fill:#78350f,stroke:#fbbf24,color:#e2e8f0
+    style MONITORING fill:#1e3a5f,stroke:#38bdf8,color:#e2e8f0
+        </div>
+
+        <div class="info-box">
+            <strong>Docker Compose Yapılandırmaları:</strong><br/>
+            • <code>backend/docker-compose.yml</code> — Development ortamı (MySQL, Redis, MinIO, Nginx)<br/>
+            • <code>docker-compose.prod.yml</code> — Production ortamı (2x API, DB replication, Redis Sentinel)<br/>
+            • <code>tests/docker-compose.test.yml</code> — Test ortamı<br/>
+            • <code>monitoring/docker-compose.yml</code> — ELK Stack izleme
+        </div>
+    </div>
+
+    <!-- ==================== İŞ AKIŞLARI ==================== -->
+    <div id="flow" class="section">
+        <h2>Ana İş Akışları</h2>
+
+        <h3>Denetim Süreci (Inspection Workflow)</h3>
+        <div class="mermaid">
+sequenceDiagram
+    participant P as 📋 Planlama
+    participant WO as 🔧 İş Emri
+    participant M as 📱 Mobil (Offline)
+    participant S as 🔄 Sync Engine
+    participant API as 🖥️ Backend API
+    participant DB as 💾 MySQL
+    participant RPT as 📄 Rapor
+    participant SIG as ✍️ E-İmza
+    participant N as 📨 Bildirim
+
+    P->>WO: İş emri oluştur
+    WO->>M: İş emri mobil cihaza sync
+    M->>M: Sahada denetim başlat
+    M->>M: Form doldur + Fotoğraf çek (GPS)
+    M->>M: Uygunsuzluk kaydet
+    M->>M: SQLite'a offline kaydet
+    M->>S: İnternet bağlantısı gelince sync
+    S->>API: Çakışma çözümü + veri gönder
+    API->>DB: Denetim sonuçları kaydet
+    API->>RPT: PDF rapor oluştur
+    RPT->>SIG: E-imza uygula
+    SIG->>DB: İmzalı rapor kaydet
+    API->>N: Müşteriye bildirim gönder (Email/SMS)
+        </div>
+
+        <h3>Teklif → Sözleşme → Fatura Akışı</h3>
+        <div class="mermaid">
+sequenceDiagram
+    participant CUST as 🏢 Müşteri
+    participant SALES as 📊 Satış
+    participant PRICE as 💰 Fiyatlama
+    participant QUOT as 📝 Teklif
+    participant CONTR as 📃 Sözleşme
+    participant WO2 as 🔧 İş Emri
+    participant INV as 🧾 Fatura
+    participant PAY2 as 💳 Ödeme
+    participant ERP as 🏭 LOGO ERP
+
+    CUST->>SALES: Talep
+    SALES->>PRICE: Fiyat hesapla
+    PRICE->>QUOT: Teklif oluştur
+    QUOT->>CUST: Teklif gönder
+    CUST->>QUOT: Onay
+    QUOT->>CONTR: Sözleşme oluştur
+    CONTR->>WO2: İş emirleri planla
+    WO2->>INV: Denetim tamamlandı → Fatura hazırla
+    INV->>PAY2: Iyzipay ile ödeme
+    INV->>ERP: LOGO ERP'ye queue ile sync
+        </div>
+
+        <h3>Kimlik Doğrulama Akışı</h3>
+        <div class="mermaid">
+sequenceDiagram
+    participant U as 👤 Kullanıcı
+    participant FE as 🌐 Frontend
+    participant AUTH as 🔐 Auth API
+    participant MFA as 📲 TOTP MFA
+    participant JWT2 as 🎫 JWT
+
+    U->>FE: Email + Şifre
+    FE->>AUTH: POST /api/v1/auth/login
+    AUTH->>AUTH: bcrypt ile şifre doğrula
+    AUTH->>AUTH: Hesap kilitli mi? Deneme sayısı?
+    alt MFA Aktif
+        AUTH->>FE: MFA kodu iste
+        U->>FE: 6 haneli TOTP kodu
+        FE->>AUTH: POST /api/v1/auth/verify-mfa
+        AUTH->>MFA: TOTP doğrula (speakeasy)
+    end
+    AUTH->>JWT2: Access Token (15dk) + Refresh Token (7gün) üret
+    JWT2->>FE: Tokenları döndür
+    FE->>FE: Token ile API istekleri
+        </div>
+    </div>
+
+</div>
+
+<script>
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        themeVariables: {
+            primaryColor: '#1e3a5f',
+            primaryTextColor: '#e2e8f0',
+            primaryBorderColor: '#3b82f6',
+            lineColor: '#64748b',
+            secondaryColor: '#064e3b',
+            tertiaryColor: '#312e81',
+            background: '#1e293b',
+            mainBkg: '#1e293b',
+            nodeBorder: '#3b82f6',
+            clusterBkg: '#1e293b',
+            titleColor: '#e2e8f0',
+            edgeLabelBackground: '#1e293b'
+        },
+        flowchart: { curve: 'basis', useMaxWidth: true },
+        er: { useMaxWidth: true },
+        sequence: { useMaxWidth: true, mirrorActors: false }
+    });
+
+    function showTab(id) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        event.target.classList.add('active');
+
+        // Re-render mermaid diagrams in the newly visible section
+        setTimeout(() => {
+            const section = document.getElementById(id);
+            const diagrams = section.querySelectorAll('.mermaid');
+            diagrams.forEach(d => {
+                if (!d.getAttribute('data-processed')) return;
+                // Already rendered
+            });
+        }, 100);
+    }
+</script>
+
+</body>
+</html>

@@ -153,13 +153,53 @@ export class PortalController {
   }
 }
 
+// ─── Extended Portal Endpoints ─────────────────────────────────────────────────
+
+import { PortalExtendedService } from './portal-extended.service';
+
+@ApiTags('portal')
+@ApiBearerAuth('JWT')
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Controller('portal')
+export class PortalExtendedController {
+  constructor(private extended: PortalExtendedService) {}
+
+  @Post('control-request')
+  @Roles(UserRole.CUSTOMER, UserRole.CUSTOMER_REP)
+  @ApiOperation({ summary: 'Yeni kontrol talebi olustur' })
+  createControlRequest(@CurrentUser() user: any, @Body() body: any) {
+    return this.extended.createControlRequest(user.customerId || user.id, body);
+  }
+
+  @Get('invoices')
+  @Roles(UserRole.CUSTOMER, UserRole.CUSTOMER_REP)
+  @ApiOperation({ summary: 'Fatura durumlarini gor' })
+  getInvoiceStatus(@CurrentUser() user: any) {
+    return this.extended.getInvoiceStatus(user.customerId || user.id);
+  }
+
+  @Get('nonconformities')
+  @Roles(UserRole.CUSTOMER, UserRole.CUSTOMER_REP)
+  @ApiOperation({ summary: 'Uygunsuzluk takibi' })
+  getNonconformities(@CurrentUser() user: any) {
+    return this.extended.getNonconformities(user.customerId || user.id);
+  }
+
+  @Get('upcoming-controls')
+  @Roles(UserRole.CUSTOMER, UserRole.CUSTOMER_REP)
+  @ApiOperation({ summary: 'Yaklasan kontrol tarihleri' })
+  getUpcomingControls(@CurrentUser() user: any) {
+    return this.extended.getUpcomingControls(user.customerId || user.id);
+  }
+}
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([Equipment, Report, Contract]),
     ContractsModule,
   ],
-  providers: [PortalService],
-  controllers: [PortalController],
+  providers: [PortalService, PortalExtendedService],
+  controllers: [PortalController, PortalExtendedController],
   exports: [PortalService],
 })
 export class PortalModule {}

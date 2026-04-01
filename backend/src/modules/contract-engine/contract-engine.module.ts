@@ -10,7 +10,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiBearerAuth, ApiTags, ApiConsumes } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiConsumes, ApiOperation } from '@nestjs/swagger';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -703,6 +703,55 @@ export class ContractEngineService {
     return saved;
   }
 
+  async getDocumentBuffer(url: string): Promise<Buffer> {
+    return this.storageService.getFileByUrl(url);
+  }
+
+  // ─── Upload Contract Document (Word/PDF) ────────────────────────────────
+  async uploadDocument(id: string, file: Express.Multer.File, userId: string) {
+    const contract = await this.findOne(id);
+    const ext = file.originalname.toLowerCase().split('.').pop();
+    const mimeTypes: Record<string, string> = {
+      pdf: 'application/pdf',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      doc: 'application/msword',
+    };
+    const mimeType = mimeTypes[ext || ''] || 'application/octet-stream';
+
+    let fileUrl = `local://contracts/${contract.contractNumber}.${ext}`;
+    try {
+      const result = await this.storageService.uploadFile(
+        StorageBucket.DOCUMENTS, file.buffer, file.originalname, mimeType, `contracts/${id}`,
+      );
+      fileUrl = result.url;
+    } catch {
+      const fs = require('fs');
+      const path = require('path');
+      const dir = path.resolve(process.cwd(), 'storage', 'contracts');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, `${contract.contractNumber}.${ext}`), file.buffer);
+    }
+
+    contract.pdfUrl = fileUrl;
+    const saved = await this.contractRepo.save(contract);
+
+    await this.auditService.log({
+      userId, action: 'CONTRACT_DOCUMENT_UPLOADED', entityType: 'Contract', entityId: id,
+      newValues: { fileName: file.originalname, mimeType, size: file.size },
+    });
+
+    // Dosya kaydi
+    const fileRecord = this.fileRepo.create({
+      contractId: id, fileType: 'contract_document',
+      fileUrl, fileName: file.originalname,
+      fileHash: require('crypto').createHash('sha256').update(file.buffer).digest('hex'),
+      uploadedById: userId,
+    });
+    await this.fileRepo.save(fileRecord);
+
+    return saved;
+  }
+
   // ─── Upload Signed Document ─────────────────────────────────────────────
   async uploadSignedDocument(
     id: string,
@@ -933,10 +982,40 @@ export class ContractEngineController {
     return new StreamableFile(pdfBuffer);
   }
 
+  @Get(':id/document')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICAL_MANAGER, UserRole.FINANCE, UserRole.EXECUTIVE, UserRole.CUSTOMER_REP)
+  @ApiOperation({ summary: 'Yuklenen sozlesme belgesini indir' })
+  async downloadDocument(@Param('id') id: string, @Res({ passthrough: true }) res: Response) {
+    const contract = await this.service.findOne(id);
+    if (!contract.pdfUrl) throw new NotFoundException('Belge yuklenmemis');
+    const buffer = await this.service.getDocumentBuffer(contract.pdfUrl);
+    const ext = contract.pdfUrl.split('.').pop() || 'pdf';
+    const mime = ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : ext === 'doc' ? 'application/msword' : 'application/pdf';
+    res.set({
+      'Content-Type': mime,
+      'Content-Disposition': `inline; filename="sozlesme-${contract.contractNumber}.${ext}"`,
+      'Content-Length': buffer.length,
+    });
+    return new StreamableFile(buffer);
+  }
+
   @Patch(':id/send')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICAL_MANAGER)
   markSent(@Param('id') id: string, @CurrentUser('id') uid: string) {
     return this.service.markSent(id, uid);
+  }
+
+  @Post(':id/upload')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICAL_MANAGER, UserRole.CUSTOMER_REP)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Sozlesme belgesi yukle (Word/PDF)' })
+  uploadDocument(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser('id') uid: string,
+  ) {
+    return this.service.uploadDocument(id, file, uid);
   }
 
   @Post(':id/upload-signed')

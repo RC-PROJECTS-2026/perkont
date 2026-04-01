@@ -74,7 +74,7 @@ export default function SettingsPage() {
               type="password"
               required
               {...regPw('currentPassword', { required: 'Zorunlu' })}
-              error={pwErrors.currentPassword?.message}
+              error={pwErrors.currentPassword?.message as string | undefined}
             />
             <Input
               label="Yeni Şifre"
@@ -89,7 +89,7 @@ export default function SettingsPage() {
                   message: 'Büyük harf, küçük harf ve rakam içermeli',
                 },
               })}
-              error={pwErrors.newPassword?.message}
+              error={pwErrors.newPassword?.message as string | undefined}
             />
             <Button type="submit" loading={changePwMutation.isPending} icon={<Save className="w-4 h-4" />}>
               Şifreyi Değiştir

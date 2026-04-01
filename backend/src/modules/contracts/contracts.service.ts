@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
@@ -9,6 +9,16 @@ import { StorageService, StorageBucket } from '@/modules/storage/storage.service
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import { PaginationDto, PaginatedResult } from '@/common/dto/pagination.dto';
 
+// ─── Contract State Machine ────────────────────────────────────────────────────
+const VALID_CONTRACT_TRANSITIONS: Record<string, string[]> = {
+  [ContractStatus.DRAFT]:      [ContractStatus.SENT, ContractStatus.SIGNED, ContractStatus.TERMINATED],
+  [ContractStatus.SENT]:       [ContractStatus.SIGNED, ContractStatus.DRAFT, ContractStatus.TERMINATED],
+  [ContractStatus.SIGNED]:     [ContractStatus.ACTIVE, ContractStatus.TERMINATED],
+  [ContractStatus.ACTIVE]:     [ContractStatus.EXPIRED, ContractStatus.TERMINATED],
+  [ContractStatus.EXPIRED]:    [],
+  [ContractStatus.TERMINATED]: [],
+};
+
 @Injectable()
 export class ContractsService {
   constructor(
@@ -17,6 +27,15 @@ export class ContractsService {
     private storageService: StorageService,
     private notificationsService: NotificationsService,
   ) {}
+
+  private validateTransition(currentStatus: string, newStatus: string): void {
+    const allowed = VALID_CONTRACT_TRANSITIONS[currentStatus];
+    if (!allowed || !allowed.includes(newStatus)) {
+      throw new BadRequestException(
+        `Sözleşme durumu '${currentStatus}' -> '${newStatus}' geçişi yapılamaz. İzin verilen: ${allowed?.join(', ') || 'yok'}`,
+      );
+    }
+  }
 
   private async generateContractNumber(): Promise<string> {
     const year  = new Date().getFullYear();
@@ -66,6 +85,12 @@ export class ContractsService {
 
   async update(id: string, data: Partial<Contract>, userId: string): Promise<Contract> {
     const old = await this.findOne(id);
+
+    // Validate status transition if status is being changed
+    if (data.status && data.status !== old.status) {
+      this.validateTransition(old.status, data.status);
+    }
+
     await this.contractRepo.update(id, data);
     await this.auditService.log({
       userId,
@@ -82,8 +107,15 @@ export class ContractsService {
     id: string, file: Buffer, originalName: string, userId: string,
   ): Promise<Contract> {
     const hash = crypto.createHash('sha256').update(file).digest('hex');
+    const ext = originalName.toLowerCase().split('.').pop();
+    const mimeTypes: Record<string, string> = {
+      pdf: 'application/pdf',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      doc: 'application/msword',
+    };
+    const mimeType = mimeTypes[ext || ''] || 'application/octet-stream';
     const { url } = await this.storageService.uploadFile(
-      StorageBucket.DOCUMENTS, file, originalName, 'application/pdf', `contracts/${id}`,
+      StorageBucket.DOCUMENTS, file, originalName, mimeType, `contracts/${id}`,
     );
     await this.contractRepo.update(id, { documentUrl: url, documentHash: hash });
     await this.auditService.log({
@@ -105,13 +137,51 @@ export class ContractsService {
       (signedBy === 'customer' && contract.companySignedAt) ||
       (signedBy === 'company'  && contract.customerSignedAt);
 
-    if (fullySign) updates.status = ContractStatus.SIGNED;
+    if (fullySign) {
+      this.validateTransition(contract.status, ContractStatus.SIGNED);
+      updates.status = ContractStatus.SIGNED;
+    }
 
     await this.contractRepo.update(id, updates);
     await this.auditService.log({
       userId, action: `CONTRACT_SIGNED_BY_${signedBy.toUpperCase()}`,
       entityType: 'Contract', entityId: id,
     });
+
+    // Auto-activate: both parties signed → immediately active
+    if (fullySign) {
+      return this.activate(id, userId);
+    }
+
+    return this.findOne(id);
+  }
+
+  async activate(id: string, userId: string): Promise<Contract> {
+    const contract = await this.findOne(id);
+
+    if (contract.status === ContractStatus.ACTIVE) return contract;
+    this.validateTransition(contract.status, ContractStatus.ACTIVE);
+
+    // Kapsam kontrolu: en az 1 scope item olmali
+    const scopeCount = await this.contractRepo.manager.query(
+      `SELECT COUNT(*) as c FROM contract_scope_items WHERE contractId = ?`, [id]
+    );
+    if (Number(scopeCount[0]?.c) === 0) {
+      throw new BadRequestException('Sözleşme kapsamı tanımlanmadan aktif edilemez. Önce ekipman tipleri ve birim fiyatları girin.');
+    }
+
+    await this.contractRepo.update(id, { status: ContractStatus.ACTIVE });
+
+    await this.auditService.log({
+      userId,
+      action: 'CONTRACT_ACTIVATED',
+      entityType: 'Contract',
+      entityId: id,
+      oldValues: { status: contract.status } as any,
+      newValues: { status: ContractStatus.ACTIVE } as any,
+      description: `Sözleşme ${contract.contractNumber} aktif edildi`,
+    });
+
     return this.findOne(id);
   }
 

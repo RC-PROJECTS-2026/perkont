@@ -236,14 +236,13 @@ export class FormTemplatesService {
     return newTemplate;
   }
 
-  async findAll(equipmentTypeId?: string): Promise<FormTemplate[]> {
-    const where: any = {};
-    if (equipmentTypeId) where.equipmentTypeId = equipmentTypeId;
-    return this.templateRepo.find({
-      where,
-      relations: ['equipmentType'],
-      order: { createdAt: 'DESC' },
-    });
+  async findAll(equipmentTypeId?: string): Promise<any[]> {
+    const qb = this.templateRepo.createQueryBuilder('t')
+      .leftJoinAndSelect('t.equipmentType', 'et')
+      .loadRelationCountAndMap('t.fieldCount', 't.fields')
+      .orderBy('t.createdAt', 'DESC');
+    if (equipmentTypeId) qb.where('t.equipmentTypeId = :equipmentTypeId', { equipmentTypeId });
+    return qb.getMany();
   }
 
   async findOne(id: string): Promise<FormTemplate> {

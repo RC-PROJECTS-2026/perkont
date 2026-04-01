@@ -162,7 +162,6 @@ export default function SalesPipelinePage() {
       <PageHeader
         title="Satış Fırsatları"
         subtitle="Satış pipeline yönetimi ve fırsat takibi"
-        icon={<TrendingUp className="w-6 h-6 text-teal-400" />}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" icon={<RefreshCw className="w-4 h-4" />} onClick={() => refetch()}>Yenile</Button>

@@ -152,6 +152,8 @@ describe('CustomersService', () => {
     it('müşteriyi pasife almalı', async () => {
       customerRepo.findOne.mockResolvedValue(mockCustomer() as Customer);
       customerRepo.update.mockResolvedValue({ affected: 1 } as any);
+      // Cascading kontrol: acik sozlesme/WO/denetim yok
+      customerRepo.manager = { query: jest.fn().mockResolvedValue([{ activeContracts: 0, openWorkOrders: 0, openInspections: 0 }]) } as any;
 
       await service.deactivate('cust-uuid-001', 'user-uuid');
 

@@ -21,6 +21,8 @@ export enum InspectionResult {
   NON_COMPLIANT = 'uygunsuz',
   PARTIALLY_COMPLIANT = 'kismi_uygun',
   NOT_APPLICABLE = 'uygulanamaz',
+  NOT_INSPECTED = 'denetlenemedi',
+  POSTPONED = 'ertelendi',
 }
 
 export enum SyncStatus {

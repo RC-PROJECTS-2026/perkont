@@ -22,14 +22,26 @@ export default function FormTemplatesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ code: '', name: '', revision: 'Rev.01', equipmentTypeId: '', description: '' });
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['form-templates', tab],
-    queryFn: () => formTemplatesApi.list(),
+  const { data, isLoading, isError, error, refetch, status, fetchStatus } = useQuery({
+    queryKey: ['form-templates'],
+    queryFn: async () => {
+      console.log('[form-templates] fetching...');
+      try {
+        const res = await formTemplatesApi.list();
+        console.log('[form-templates] success:', typeof res, Array.isArray(res?.data) ? res.data.length + ' items' : res);
+        return res;
+      } catch (e: any) {
+        console.error('[form-templates] error:', e.message);
+        throw e;
+      }
+    },
+    retry: false,
   });
   const { data: typesData } = useEquipmentTypes();
 
-  const allTemplates = (data as any)?.data || [];
-  const types = (typesData as any)?.data || [];
+  const rawData = (data as any);
+  const allTemplates = Array.isArray(rawData) ? rawData : (rawData?.data || []);
+  const types = Array.isArray((typesData as any)) ? (typesData as any) : ((typesData as any)?.data || []);
 
   const filtered = allTemplates.filter((t: any) => {
     const matchSearch = !search || t.name?.toLowerCase().includes(search.toLowerCase()) || t.code?.toLowerCase().includes(search.toLowerCase());
@@ -103,15 +115,27 @@ export default function FormTemplatesPage() {
         <Tabs tabs={tabs} active={tab} onChange={setTab} />
       </div>
 
+      {/* Debug */}
+      <div className="mb-2 text-xs text-slate-500">
+        Status: {status} | Fetch: {fetchStatus} | Data type: {typeof data} | Templates: {allTemplates.length} | Filtered: {filtered.length}
+        {isError && <span className="text-red-400 ml-2">Error: {(error as any)?.message}</span>}
+      </div>
+
       <Card padding="none">
         <div className="p-4 border-b border-slate-100 dark:border-slate-800">
           <SearchInput value={search} onChange={setSearch} placeholder="Form adı veya kodu ara..." className="max-w-sm" />
         </div>
 
-        {isLoading ? (
+        {isError ? (
+          <div className="p-8 text-center">
+            <p className="text-red-400 font-medium mb-2">Veri yüklenirken hata oluştu</p>
+            <p className="text-sm text-slate-500 mb-4">{(error as any)?.message || 'Bilinmeyen hata'}</p>
+            <Button variant="outline" onClick={() => refetch()}>Tekrar Dene</Button>
+          </div>
+        ) : isLoading ? (
           <SkeletonTable rows={6} cols={7} />
         ) : filtered.length === 0 ? (
-          <EmptyState icon={<Zap className="w-12 h-12" />} title="Form şablonu bulunamadı" />
+          <EmptyState icon={<Zap className="w-12 h-12" />} title={`Form şablonu bulunamadı (toplam: ${allTemplates.length})`} />
         ) : (
           <table className="data-table">
             <thead>
@@ -156,7 +180,7 @@ export default function FormTemplatesPage() {
                   </td>
                   <td>
                     <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      {t.fields?.length || 0}
+                      {t.fieldCount ?? t.fields?.length ?? 0}
                     </span>
                   </td>
                   <td>

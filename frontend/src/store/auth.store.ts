@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   fullName: string;
   role: string;
+  roles?: string;
   mfaEnabled: boolean;
 }
 

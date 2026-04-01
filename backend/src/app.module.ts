@@ -51,6 +51,10 @@ import { SalesPipelineModule } from './modules/sales-pipeline/sales-pipeline.mod
 import { SharedModule } from './modules/shared/shared.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { ContractScopeModule } from './modules/contract-scope/contract-scope.module';
+import { PricingTariffModule } from './modules/pricing-tariff/pricing-tariff.module';
+import { PlanningModule } from './modules/planning/planning.module';
+import { GapModulesModule } from './modules/accreditation/gap-modules';
 
 import { TenantGuard } from './common/guards/tenant.guard';
 import { databaseConfig } from './config/database.config';
@@ -103,7 +107,8 @@ import { jwtConfig } from './config/jwt.config';
         if (logstashHost) {
           // Winston TCP transport — JSON lines formatında Logstash'e gönderir
           const net = require('net');
-          class LogstashTransport extends (winston.transport as any) {
+          const TransportStream = require('winston-transport');
+          class LogstashTransport extends TransportStream {
             private socket: any;
             constructor(private host: string, private port: number) {
               super({ level: 'info' });
@@ -137,7 +142,7 @@ import { jwtConfig } from './config/jwt.config';
         username: configService.get('DB_USERNAME', 'root'),
         password: configService.get('DB_PASSWORD') || '',
         database: configService.get('DB_DATABASE', 'perkont_db'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}', __dirname + '/**/*.module{.ts,.js}'],
+        autoLoadEntities: true,
         synchronize: false,
         dropSchema: false,
         migrationsRun: false,
@@ -224,6 +229,10 @@ import { jwtConfig } from './config/jwt.config';
     SalesPipelineModule,
     PaymentsModule,
     MonitoringModule,
+    ContractScopeModule,
+    PricingTariffModule,
+    PlanningModule,
+    GapModulesModule,
   ],
   providers: [
     {

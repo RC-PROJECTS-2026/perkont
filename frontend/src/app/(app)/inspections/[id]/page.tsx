@@ -17,11 +17,12 @@ import {
   Send, Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import InspectionFormFiller from '@/components/inspection-form-filler';
 
 export default function InspectionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState('fields');
   const [reviewNote, setReviewNote] = useState('');
   const [reviewModal, setReviewModal] = useState<'approve' | 'revision' | null>(null);
 
@@ -117,7 +118,7 @@ export default function InspectionDetailPage() {
 
   const tabs = [
     { key: 'overview', label: 'Genel' },
-    { key: 'fields', label: 'Alan Degerleri', count: fieldValues.length },
+    { key: 'fields', label: 'Form Doldur', count: fieldValues.length },
     { key: 'photos', label: 'Fotograflar', count: photos.length },
     { key: 'nonconformities', label: 'Uygunsuzluklar', count: ncs.length },
     { key: 'history', label: 'Inceleme Gecmisi', count: reviewHistory.length },
@@ -419,66 +420,16 @@ export default function InspectionDetailPage() {
 
       {/* Field values */}
       {tab === 'fields' && (
-        <Card padding="none">
-          {fieldValues.length === 0 ? (
-            <EmptyState
-              icon={<ClipboardList className="w-10 h-10" />}
-              title="Alan degeri girilmemis"
-            />
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Alan Anahtari</th>
-                  <th>Etiket</th>
-                  <th>Deger</th>
-                  <th>Giren</th>
-                  <th>Girilme Zamani</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fieldValues.map((fv: any) => (
-                  <tr key={fv.id}>
-                    <td>
-                      <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
-                        {fv.fieldKey}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="text-sm text-slate-700 dark:text-slate-300">
-                        {fv.label || fv.fieldKey}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="text-sm text-slate-700 dark:text-slate-300">
-                        {fv.valueText ??
-                          fv.valueNumber ??
-                          (fv.valueBoolean !== null && fv.valueBoolean !== undefined
-                            ? fv.valueBoolean
-                              ? 'Evet'
-                              : 'Hayir'
-                            : null) ??
-                          (fv.valueJson
-                            ? JSON.stringify(fv.valueJson).slice(0, 80)
-                            : '—')}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="text-xs text-slate-400">
-                        {fv.enteredBy?.fullName || fv.enteredById?.slice(0, 8) || '—'}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="text-xs text-slate-400">
-                        {formatDateTime(fv.enteredAt)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
+        <InspectionFormFiller
+          inspectionId={inspection.id}
+          formTemplateId={inspection.formTemplateId}
+          existingValues={fieldValues.map((fv: any) => ({
+            fieldKey: fv.fieldKey,
+            value: fv.valueText ?? fv.valueNumber ?? fv.valueBoolean ?? fv.valueJson ?? fv.value ?? '',
+          }))}
+          editable={['in_progress', 'revision_requested', 'draft'].includes(inspection.status)}
+          onSaved={() => refetch()}
+        />
       )}
 
       {/* Photos */}

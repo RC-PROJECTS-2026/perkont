@@ -121,20 +121,56 @@ export class InvoicePreparationService {
     return { readyCount, preparedCount, sentCount, totalAmount };
   }
 
+  /**
+   * WO ekipmanlari icin sozlesme birim fiyat bazli otomatik tutar hesapla.
+   * Sozlesme kapsam fiyati yoksa pricing_tariffs'ten duser.
+   */
+  async calculateWoAmount(workOrderId: string): Promise<{ items: any[]; total: number }> {
+    const rows = await this.dataSource.query(`
+      SELECT woe.id, woe.equipmentId, e.equipmentTypeId, et.name as equipmentTypeName,
+             COALESCE(csi.unitPrice, pt.basePrice, 0) as unitPrice,
+             COALESCE(csi.currency, pt.currency, 'TRY') as currency
+      FROM work_order_equipment woe
+      JOIN equipment e ON e.id = woe.equipmentId
+      JOIN equipment_types et ON et.id = e.equipmentTypeId
+      LEFT JOIN work_orders wo ON wo.id = woe.workOrderId
+      LEFT JOIN contract_scope_items csi ON csi.contractId = wo.contractId AND csi.equipmentTypeId = e.equipmentTypeId
+      LEFT JOIN pricing_tariffs pt ON pt.equipmentTypeId = e.equipmentTypeId AND pt.isActive = 1
+      WHERE woe.workOrderId = ?
+      ORDER BY et.name
+    `, [workOrderId]);
+
+    const total = rows.reduce((sum: number, r: any) => sum + Number(r.unitPrice || 0), 0);
+    return { items: rows, total };
+  }
+
   async prepare(
     workOrderId: string,
-    data: { invoiceDate?: string; notes?: string; totalAmount: number },
+    data: { invoiceDate?: string; notes?: string; totalAmount?: number },
     userId: string,
   ): Promise<InvoiceBatch> {
     // iş emrinin durumunu kontrol et
     const woRows = await this.dataSource.query(
-      `SELECT id, customer_id, status FROM work_orders WHERE id = ? AND status IN ('completed', 'report_approved')`,
+      `SELECT id, customerId, status, contractId FROM work_orders WHERE id = ? AND status IN ('completed', 'report_approved')`,
       [workOrderId],
     );
     if (!woRows.length) throw new NotFoundException('İş emri bulunamadı veya uygun durumda değil');
 
     const wo = woRows[0];
-    const totalAmount = Number(data.totalAmount);
+
+    // Otomatik hesaplama: birim fiyat x ekipman sayisi
+    const calculated = await this.calculateWoAmount(workOrderId);
+    const totalAmount = data.totalAmount != null ? Number(data.totalAmount) : calculated.total;
+
+    // Manuel tutar ile hesaplanan tutar farkliysa uyari logla
+    if (data.totalAmount != null && Math.abs(totalAmount - calculated.total) > 1) {
+      await this.auditService.log({
+        userId, action: 'INVOICE_AMOUNT_MISMATCH', entityType: 'work_order', entityId: workOrderId,
+        newValues: { manualAmount: totalAmount, calculatedAmount: calculated.total, difference: totalAmount - calculated.total },
+        description: `Fatura tutarı uyumsuzluğu: Manuel ${totalAmount} TL vs Hesaplanan ${calculated.total} TL`,
+      });
+    }
+
     const vatRate = 20;
     const vatAmount = Math.round(totalAmount * (vatRate / 100) * 100) / 100;
     const totalWithVat = Math.round((totalAmount + vatAmount) * 100) / 100;
@@ -277,6 +313,15 @@ export class InvoicePreparationService {
       if (!isNaN(lastSeq)) seq = lastSeq + 1;
     }
     return `${prefix}${String(seq).padStart(5, '0')}`;
+  }
+
+  async findOne(id: string): Promise<InvoiceBatch | null> {
+    return this.repo.findOne({ where: { id } });
+  }
+
+  async updateStatus(id: string, status: string, userId: string): Promise<void> {
+    await this.repo.update(id, { status });
+    await this.auditService.log({ userId, action: 'INVOICE_STATUS_CHANGE', entityType: 'invoice_batch', entityId: id, newValues: { status } });
   }
 
   // ─── Cancel ──────────────────────────────────────────────────────────────
@@ -439,6 +484,11 @@ export class InvoicePreparationService {
 export class InvoicePreparationController {
   constructor(private service: InvoicePreparationService) {}
 
+  @Get('calculate/:workOrderId') @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  calculateAmount(@Param('workOrderId') woId: string) {
+    return this.service.calculateWoAmount(woId);
+  }
+
   @Get('ready') @Roles(UserRole.ADMIN, UserRole.FINANCE)
   getReady(
     @Query('customerId') customerId?: string,
@@ -477,8 +527,23 @@ export class InvoicePreparationController {
     return this.service.createBatch(body, uid);
   }
 
+  @Patch('batch/:id/send-proforma') @Roles(UserRole.ADMIN, UserRole.FINANCE)
+    async sendProforma(@Param('id') id: string, @CurrentUser('id') uid: string) {
+    const batch = await this.service.findOne(id);
+    if (!batch) throw new NotFoundException('Fatura batch bulunamadı');
+    // Mark as proforma_sent
+    await this.service.updateStatus(id, 'proforma_sent', uid);
+    return { message: 'Proforma fatura müşteriye gönderildi', batchNumber: batch.batchNumber };
+  }
+
+  @Patch('batch/:id/customer-approve') @Roles(UserRole.ADMIN, UserRole.FINANCE, UserRole.CUSTOMER)
+    async customerApprove(@Param('id') id: string, @CurrentUser('id') uid: string) {
+    await this.service.updateStatus(id, 'customer_approved', uid);
+    return { message: 'Proforma fatura müşteri tarafından onaylandı' };
+  }
+
   @Patch('batch/:id/send-to-logo') @Roles(UserRole.ADMIN, UserRole.FINANCE)
-  sendToLogo(@Param('id') id: string, @CurrentUser('id') uid: string) {
+    sendToLogo(@Param('id') id: string, @CurrentUser('id') uid: string) {
     return this.service.sendToLogo(id, uid);
   }
 

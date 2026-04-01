@@ -413,14 +413,16 @@ export default function CustomerDetailPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {(Array.isArray(opportunities) ? opportunities : []).slice(0, 3).map((opp: any) => (
-                  <Card key={opp.id} className="cursor-pointer hover:border-teal-700/50 transition" onClick={() => router.push('/sales-pipeline')}>
-                    <p className="text-sm font-semibold text-slate-200 mb-1">{opp.title}</p>
-                    <div className="flex items-center justify-between">
-                      <Badge color="bg-slate-800 text-slate-400">{opp.stage || opp.status}</Badge>
-                      <span className="text-sm font-semibold text-teal-400">{formatCurrency(opp.estimatedValue || 0)}</span>
-                    </div>
-                    {opp.probability != null && <p className="text-xs text-slate-500 mt-1">Olasılık: %{opp.probability}</p>}
-                  </Card>
+                  <div key={opp.id} className="cursor-pointer hover:border-teal-700/50 transition" onClick={() => router.push('/sales-pipeline')}>
+                    <Card className="hover:border-teal-700/50 transition">
+                      <p className="text-sm font-semibold text-slate-200 mb-1">{opp.title}</p>
+                      <div className="flex items-center justify-between">
+                        <Badge color="bg-slate-800 text-slate-400">{opp.stage || opp.status}</Badge>
+                        <span className="text-sm font-semibold text-teal-400">{formatCurrency(opp.estimatedValue || 0)}</span>
+                      </div>
+                      {opp.probability != null && <p className="text-xs text-slate-500 mt-1">Olasılık: %{opp.probability}</p>}
+                    </Card>
+                  </div>
                 ))}
               </div>
             )}

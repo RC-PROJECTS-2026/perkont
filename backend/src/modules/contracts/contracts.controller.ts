@@ -77,4 +77,10 @@ export class ContractsController {
   ) {
     return this.service.markSigned(id, party, userId);
   }
+
+  @Patch(':id/activate')
+  @Roles(UserRole.ADMIN, UserRole.SALES)
+  activate(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.service.activate(id, userId);
+  }
 }

@@ -66,51 +66,50 @@ export class PdfEngineService implements OnModuleInit {
     additionalData: Record<string, any> = {},
   ): Promise<GeneratedPdf> {
     try {
-      // 1. Şablon PDF'i yükle (varsa overlay, yoksa boş sayfa)
+      // 1. Sablon PDF yukle (varsa overlay)
       let pdfDoc: PDFDocument;
+      let useOverlay = false;
+
       if (formTemplate.outputTemplateUrl) {
         try {
           const templateBytes = await this.storageService.getFileByUrl(formTemplate.outputTemplateUrl);
           pdfDoc = await PDFDocument.load(templateBytes);
+          useOverlay = true;
         } catch {
           pdfDoc = await PDFDocument.create();
-          pdfDoc.addPage([595, 842]); // A4 fallback
         }
       } else {
         pdfDoc = await PDFDocument.create();
-        pdfDoc.addPage([595, 842]); // A4 — şablon PDF henüz yüklenmemiş
       }
 
-      // 2. Türkçe font hazırla
+      // 2. Turkce font hazirla
       const { normal: helvetica, bold: helveticaBold } = await this.embedFonts(pdfDoc);
 
-      // 3. Alan değerlerini index'e al
+      // 3. Alan degerlerini indexe al
       const fieldValueMap = this.buildFieldValueMap(inspection.fieldValues);
 
-      // 4. Her alanı PDF üzerine çiz
-      for (const field of formTemplate.fields) {
-        if (!field.pdfCoordinate) continue;
-
-        // Koşullu alan — koşul sağlanmıyorsa atla
-        if (field.isConditional && !this.evaluateCondition(field.conditionRule, fieldValueMap)) {
-          continue;
+      if (useOverlay) {
+        // ── OVERLAY MODU: Template PDF uzerine yaz ──
+        for (const field of formTemplate.fields) {
+          if (!field.pdfCoordinate) continue;
+          if (field.isConditional && !this.evaluateCondition(field.conditionRule, fieldValueMap)) continue;
+          const value = fieldValueMap[field.fieldKey] ?? additionalData[field.dbMapping || ''];
+          if (value === undefined || value === null) continue;
+          const page = pdfDoc.getPages()[field.pdfCoordinate.page - 1];
+          if (!page) continue;
+          await this.drawField(page, pdfDoc, field, value, helvetica, helveticaBold);
         }
-
-        const value = fieldValueMap[field.fieldKey] ?? additionalData[field.dbMapping || ''];
-        if (value === undefined || value === null) continue;
-
-        const page = pdfDoc.getPages()[field.pdfCoordinate.page - 1];
-        if (!page) continue;
-
-        await this.drawField(page, pdfDoc, field, value, helvetica, helveticaBold);
+      } else {
+        // ── PROGRAMATIK MODU: DOCX benzeri tablo PDF uret ──
+        await this.generateStructuredReport(pdfDoc, formTemplate, fieldValueMap, additionalData, reportNumber, helvetica, helveticaBold);
       }
 
-      // 5. Rapor numarası, tarih, QR kodu ekle
-      await this.addReportMeta(pdfDoc, reportNumber);
-
-      // 6. Doğrulama QR kodu
-      const verifyUrl = `${this.configService.get('REPORT_VERIFY_BASE_URL')}/report/${reportNumber}`;
-      await this.addQrCode(pdfDoc, verifyUrl);
+      // 5. Meta ve QR: sadece programatik modda ekle (overlay modda template kendi basligini iceriyor)
+      if (!useOverlay) {
+        await this.addReportMeta(pdfDoc, reportNumber);
+        const verifyUrl = `${this.configService.get('REPORT_VERIFY_BASE_URL')}/report/${reportNumber}`;
+        await this.addQrCode(pdfDoc, verifyUrl);
+      }
 
       // 7. Üret ve hash hesapla
       const pdfBytes = await pdfDoc.save();
@@ -128,7 +127,133 @@ export class PdfEngineService implements OnModuleInit {
     }
   }
 
-  // ─── Alan tiplerine göre çizim ────────────────────────────────────────────
+  // ─── Programatik PDF uretimi (DOCX benzeri) ───────────────────────────────
+  private async generateStructuredReport(
+    pdfDoc: PDFDocument,
+    formTemplate: FormTemplate,
+    fieldValueMap: Record<string, any>,
+    additionalData: Record<string, any>,
+    reportNumber: string,
+    normalFont: PDFFont,
+    boldFont: PDFFont,
+  ): Promise<void> {
+    const W = 595; // A4 width
+    const H = 842; // A4 height
+    const M = 40;  // margin
+    const CW = W - M * 2; // content width
+    const blue = rgb(0.15, 0.25, 0.45);
+    const white = rgb(1, 1, 1);
+    const black = rgb(0, 0, 0);
+    const gray = rgb(0.4, 0.4, 0.4);
+    const lightGray = rgb(0.92, 0.92, 0.92);
+    const greenC = rgb(0, 0.5, 0);
+    const redC = rgb(0.75, 0, 0);
+
+    let page = pdfDoc.addPage([W, H]);
+    let y = H - M;
+
+    const newPage = () => { page = pdfDoc.addPage([W, H]); y = H - M; };
+    const checkSpace = (need: number) => { if (y - need < 50) newPage(); };
+
+    // ── BASLIK ──
+    // Ust cizgi
+    page.drawRectangle({ x: M, y: y - 5, width: CW, height: 3, color: blue });
+    y -= 25;
+    // Firma adi
+    page.drawText(this.safeText('ROYALCERT BELGELENDIRME VE GOZETIM HIZMETLERI A.S.'), {
+      x: M, y, size: 7, font: normalFont, color: gray,
+    });
+    y -= 20;
+    // Rapor basligi
+    const title = formTemplate.name.replace(/^RC-M-[A-Za-z\u0130\u00e7\u011f\u0131\u00f6\u015f\u00fc]+-FR\d+[_\d]*\s*/, '').trim() || formTemplate.name;
+    page.drawText(this.safeText(title), { x: M, y, size: 14, font: boldFont, color: blue, maxWidth: CW });
+    y -= 18;
+    // Alt bilgi
+    page.drawText(this.safeText(`Rapor No: ${reportNumber}  |  Revizyon: ${formTemplate.revision}  |  Tarih: ${new Date().toLocaleDateString('tr-TR')}`), {
+      x: M, y, size: 8, font: normalFont, color: gray,
+    });
+    y -= 5;
+    page.drawRectangle({ x: M, y, width: CW, height: 1, color: blue });
+    y -= 20;
+
+    // ── BOLUM VE ALANLAR ──
+    const sortedFields = [...(formTemplate.fields || [])].sort((a, b) => a.orderIndex - b.orderIndex);
+
+    for (const field of sortedFields) {
+      const ft = (field.fieldType || '').toLowerCase();
+
+      // SECTION_HEADER
+      if (ft === 'section_header') {
+        checkSpace(30);
+        y -= 8;
+        page.drawRectangle({ x: M, y: y - 2, width: CW, height: 18, color: blue });
+        page.drawText(this.safeText(field.label), { x: M + 6, y: y + 2, size: 9, font: boldFont, color: white, maxWidth: CW - 12 });
+        y -= 22;
+        continue;
+      }
+
+      // Normal alan
+      const value = fieldValueMap[field.fieldKey] ?? additionalData[field.dbMapping || ''] ?? '';
+      const displayValue = this.formatDisplayValue(value, ft);
+      const ROW_H = 16;
+      const LABEL_W = CW * 0.4;
+      const VALUE_W = CW * 0.6;
+
+      checkSpace(ROW_H + 2);
+
+      // Label arka plan
+      page.drawRectangle({ x: M, y: y - ROW_H + 4, width: LABEL_W, height: ROW_H, color: lightGray });
+      // Cizgiler
+      page.drawRectangle({ x: M, y: y - ROW_H + 4, width: CW, height: ROW_H, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.5 });
+      page.drawLine({ start: { x: M + LABEL_W, y: y + 4 }, end: { x: M + LABEL_W, y: y - ROW_H + 4 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
+
+      // Label
+      page.drawText(this.safeText(field.label.substring(0, 50)), { x: M + 4, y: y - 5, size: 7.5, font: boldFont, color: black, maxWidth: LABEL_W - 8 });
+
+      // Value (renk: check_item icin ozel)
+      let valColor = black;
+      if (ft === 'check_item' || ft === 'boolean') {
+        if (String(value).toLowerCase().includes('uygun') && !String(value).toLowerCase().includes('uygunsuz')) valColor = greenC;
+        else if (String(value).toLowerCase().includes('uygunsuz')) valColor = redC;
+      }
+      page.drawText(this.safeText(displayValue.substring(0, 60)), { x: M + LABEL_W + 4, y: y - 5, size: 7.5, font: normalFont, color: valColor, maxWidth: VALUE_W - 8 });
+
+      y -= ROW_H;
+    }
+
+    // ── SONUC KUTUSU ──
+    checkSpace(50);
+    y -= 15;
+    page.drawRectangle({ x: M, y: y - 30, width: CW, height: 35, color: rgb(0.95, 0.98, 0.95), borderColor: greenC, borderWidth: 1 });
+    page.drawText(this.safeText('DENETIM SONUCU'), { x: M + 6, y: y - 5, size: 8, font: boldFont, color: blue });
+    const result = fieldValueMap['overall_result'] || additionalData['overallResult'] || 'Uygun';
+    page.drawText(this.safeText(String(result).toUpperCase()), { x: M + 6, y: y - 20, size: 12, font: boldFont, color: greenC });
+  }
+
+  private formatDisplayValue(value: any, fieldType: string): string {
+    if (value === null || value === undefined || value === '') return '-';
+    if (value === true || value === 'true') return 'Evet';
+    if (value === false || value === 'false') return 'Hayir';
+    if (fieldType === 'date') {
+      try { return new Date(value).toLocaleDateString('tr-TR'); } catch { return String(value); }
+    }
+    return this.safeText(String(value));
+  }
+
+  /** Turkce karakterleri ASCII'ye donusturur (StandardFonts kullanilirken) */
+  private safeText(s: string): string {
+    if (this.turkishFontBytes) return s; // Turkce font varsa dokunma
+    return s
+      .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+      .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+      .replace(/ş/g, 's').replace(/Ş/g, 'S')
+      .replace(/ı/g, 'i').replace(/İ/g, 'I')
+      .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+      .replace(/ç/g, 'c').replace(/Ç/g, 'C')
+      .replace(/[^\x00-\x7F]/g, '?'); // Diger non-ASCII -> ?
+  }
+
+  // ─── Alan tiplerine gore cizim ────────────────────────────────────────────
   private async drawField(
     page: any,
     pdfDoc: PDFDocument,

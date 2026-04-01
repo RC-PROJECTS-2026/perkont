@@ -115,6 +115,17 @@ export class StorageService implements OnModuleInit {
   }
 
   async getFileByUrl(url: string): Promise<Buffer> {
+    // Local filesystem fallback (MinIO yokken)
+    if (url.startsWith('local://')) {
+      const fs = require('fs');
+      const path = require('path');
+      const relativePath = url.replace('local://', '');
+      const localPath = path.resolve(process.cwd(), 'storage', relativePath);
+      if (fs.existsSync(localPath)) {
+        return fs.readFileSync(localPath);
+      }
+      throw new Error(`Local dosya bulunamadi: ${localPath}`);
+    }
     const { bucket, objectName } = this.parseUrl(url);
     const stream = await this.client.getObject(bucket, objectName);
     return this.streamToBuffer(stream);

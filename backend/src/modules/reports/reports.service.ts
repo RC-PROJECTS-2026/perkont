@@ -91,7 +91,15 @@ export class ReportsService {
       url = uploaded.url;
       objectName = uploaded.objectName;
     } catch (e) {
-      console.warn(`[Reports] MinIO yükleme başarısız, local path kullanılıyor: ${e?.message}`);
+      console.warn(`[Reports] MinIO yukleme basarisiz, local path kullaniliyor: ${e?.message}`);
+      // Local filesystem'e kaydet
+      const fs = require('fs');
+      const path = require('path');
+      const localDir = path.resolve(process.cwd(), 'storage', 'reports');
+      fs.mkdirSync(localDir, { recursive: true });
+      const localPath = path.join(localDir, `${reportNumber}.pdf`);
+      fs.writeFileSync(localPath, buffer);
+      console.log(`[Reports] PDF local kaydedildi: ${localPath}`);
     }
 
     const report = this.reportRepo.create({

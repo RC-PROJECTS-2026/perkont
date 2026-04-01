@@ -37,7 +37,9 @@ export default function ContractEnginePage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showFromProposal, setShowFromProposal] = useState(false);
   const [uploadModal, setUploadModal] = useState<any>(null);
+  const [docUploadModal, setDocUploadModal] = useState<any>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [docFile, setDocFile] = useState<File | null>(null);
 
   // Auto-open from-proposal modal
   useEffect(() => {
@@ -119,6 +121,15 @@ export default function ContractEnginePage() {
   const activateMutation = useMutationWithToast(
     (id: string) => contractEngineApi.activate(id),
     { successMessage: 'Sözleşme aktifleştirildi', invalidateKeys: [['contract-engine']] },
+  );
+
+  const docUploadMutation = useMutationWithToast(
+    ({ id, file }: any) => contractEngineApi.uploadDocument(id, file),
+    {
+      successMessage: 'Sözleşme belgesi yüklendi',
+      invalidateKeys: [['contract-engine']],
+      onSuccess: () => { setDocUploadModal(null); setDocFile(null); },
+    },
   );
 
   const uploadMutation = useMutationWithToast(
@@ -282,6 +293,13 @@ export default function ContractEnginePage() {
                         >
                           <Download className="w-4 h-4" />
                         </button>
+                        <button
+                          onClick={() => setDocUploadModal(c)}
+                          className="p-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/30 text-slate-400 hover:text-teal-600"
+                          title="Sözleşme Belgesi Yükle (Word/PDF)"
+                        >
+                          <FileCheck className="w-4 h-4" />
+                        </button>
                         {c.status === 'draft' && (
                           <button
                             onClick={() => sendMutation.mutate(c.id)}
@@ -405,6 +423,47 @@ export default function ContractEnginePage() {
         )}
       </Modal>
 
+      {/* Document Upload Modal (Word/PDF) */}
+      <Modal
+        open={!!docUploadModal}
+        onClose={() => { setDocUploadModal(null); setDocFile(null); }}
+        title={`Sözleşme Belgesi Yükle — ${docUploadModal?.contractNumber}`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setDocUploadModal(null); setDocFile(null); }}>İptal</Button>
+            <Button loading={docUploadMutation.isPending} disabled={!docFile}
+              onClick={() => docUploadMutation.mutate({ id: docUploadModal?.id, file: docFile })}>
+              Yükle
+            </Button>
+          </>
+        }
+      >
+        <div
+          className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-8 text-center cursor-pointer hover:border-teal-400 transition-colors"
+          onClick={() => document.getElementById('ce-doc-upload')?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setDocFile(f); }}
+        >
+          <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+          {docFile ? (
+            <p className="text-sm font-semibold text-teal-600">{docFile.name}</p>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500">Word veya PDF belgesi sürükleyin veya seçin</p>
+              <p className="text-xs text-slate-400 mt-1">.docx, .doc, .pdf — maks. 10MB</p>
+            </>
+          )}
+          <input
+            id="ce-doc-upload"
+            type="file"
+            accept=".pdf,.docx,.doc"
+            className="hidden"
+            onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+          />
+        </div>
+      </Modal>
+
       {/* Upload Signed Modal */}
       <Modal
         open={!!uploadModal}
@@ -436,14 +495,14 @@ export default function ContractEnginePage() {
             <p className="text-sm font-semibold text-teal-600">{selectedFile.name}</p>
           ) : (
             <>
-              <p className="text-sm text-slate-500">İmzalı PDF belgeyi sürükleyin veya seçin</p>
-              <p className="text-xs text-slate-400 mt-1">PDF, maks. 10MB</p>
+              <p className="text-sm text-slate-500">İmzalı belgeyi sürükleyin veya seçin</p>
+              <p className="text-xs text-slate-400 mt-1">.pdf, .docx — maks. 10MB</p>
             </>
           )}
           <input
             id="ce-upload"
             type="file"
-            accept=".pdf"
+            accept=".pdf,.docx,.doc"
             className="hidden"
             onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
           />

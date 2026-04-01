@@ -172,6 +172,21 @@ export class EquipmentService {
       locationId: equipment.locationId,
     };
 
+    // Ekipman pasif/hurda yapiliyorsa acik denetim/WO kontrolu
+    if (dto.status && ['passive', 'scrapped'].includes(dto.status) && dto.status !== equipment.status) {
+      const openWork = await this.dataSource.query(`
+        SELECT
+          (SELECT COUNT(*) FROM inspections WHERE equipmentId = ? AND status IN ('in_progress','submitted','under_review')) as openInspections,
+          (SELECT COUNT(*) FROM work_order_equipment woe JOIN work_orders wo ON wo.id = woe.workOrderId WHERE woe.equipmentId = ? AND wo.status NOT IN ('cancelled','invoiced','completed')) as openWOs
+      `, [id, id]);
+      const issues: string[] = [];
+      if (Number(openWork[0]?.openInspections) > 0) issues.push(`${openWork[0].openInspections} açık denetim`);
+      if (Number(openWork[0]?.openWOs) > 0) issues.push(`${openWork[0].openWOs} açık iş emri`);
+      if (issues.length > 0) {
+        throw new BadRequestException(`Ekipman ${dto.status} yapılamaz: ${issues.join(', ')} mevcut.`);
+      }
+    }
+
     Object.assign(equipment, dto);
     await this.equipmentRepo.save(equipment);
 
